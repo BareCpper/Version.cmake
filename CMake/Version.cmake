@@ -72,9 +72,6 @@ else()
     message(CHECK_PASS "Success '${GIT_CACHE_PATH}'")
 endif()
 
-message( "GIT_CACHE_PATH_COMMAND ${GIT_CACHE_PATH_COMMAND}")
-
-
 message(CHECK_START "Git Describe")
 execute_process(
     COMMAND           ${GIT_VERSION_COMMAND}
@@ -126,10 +123,7 @@ if(NOT DEFINED VERSION_FULL)
 endif()
 
 
-function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H) 
-    message( "VERSION_SEMANTIC ${VERSION_SEMANTIC}")
-    message( "VERSION_FULL ${VERSION_FULL}")
-
+function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H)
     configure_file (
         "${VERSION_H_TEMPLATE}"
         "${VERSION_H}"
