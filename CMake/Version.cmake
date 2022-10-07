@@ -36,14 +36,14 @@ endif()
     
 # Git describe
 # @note Exclude 'tweak' tags in the form v0.1.2-30 i.e. with the '-30' to avoid a second suffix being appended e.g v0.1.2-30-12
-set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"--no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*" --always --dirty --long)
+set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" --no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*" --always --dirty --long)
 
 # Git count
 # @note We only count commits on the current branch and not comits in merge branches via '--first-parent'. The count is never unique but the Sha will be!
-set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"rev-list HEAD --count  --first-parent)
+set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-list HEAD --count  --first-parent)
 
 macro(parseSemanticVersion semVer)
-    if( "${semVer}"MATCHES "^v?([0-9]+)[.]([0-9]+)[.]?([0-9]+)?[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$")
+    if( "${semVer}" MATCHES "^v?([0-9]+)[.]([0-9]+)[.]?([0-9]+)?[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$")
         set( VERSON_SET TRUE)
         math( EXPR VERSION_MAJOR  "${CMAKE_MATCH_1}+0")
         math( EXPR VERSION_MINOR  "${CMAKE_MATCH_2}+0")
