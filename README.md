@@ -14,6 +14,19 @@ Simplify your Semantic-Version automation within every developer build using cod
 7. Use a 'Prefix' for your project options in CMake options:
    <br/> :gem: Instead of `BUILD_TESTING` use `MYLIBRARY_BUILD_TESTING`
 
+## Output Variables
+All variables use the form `VERSION_<field>`
+
+Values are defined similar both `CMake` and via the default `Version.h` using C-Preprocessor:or:
+- `VERSION_SET` - Boolean indicating if `VERSION_<fields>` have been populated
+- `VERSION_MAJOR` - Major semantic-version extracted from repository tag
+- `VERSION_MINOR` - Minor semantic-version extracted from repository tag
+- `VERSION_PATCH` - Patch semantic-version extracted from repository tag
+- `VERSION_COMMIT` - Commit-count semantic-version extracted from repository branch revision
+- `VERSION_SHA` - Revision specific unique SHA hash. For example `4c757e7`
+- `VERSION_SEMANTIC` - Full semantic version in form `<major>.<minor>.<patch>.<commit>`. For example `0.1.0.10`
+- `VERSION_FULL` - Full string description, useful for ABI compatiblity. For example `v0.1-9-g4c757e7-dirty`
+
 ## Adding Version.cmake
 
 We recommend using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) so you stay upto-date with the latest fixes and features.
@@ -22,19 +35,44 @@ Alternative, you may directly include `Version.cmake` in your project but we don
 
 ### Basic Usage
 
-After [adding CPM.cmake](https://github.com/cpm-cmake/CPM.cmake#adding-cpm), add the following line to the project's `CMakeLists.txt` after calling `project(...)`.
+After [adding CPM.cmake](https://github.com/cpm-cmake/CPM.cmake#adding-cpm), add the following line to the `CMakeLists.txt`.
 
 ```cmake
 include(CPM)
 CPMAddPackage("gh:BareCpper/Version.cmake")
+```
 
-target_link_libraries( MyProject
+Optionally you can set the version on the `project(...)` for which it is worth also checkin `VERSION_SET`:
+```cmake
+if ( NOT VERSION_SET )
+    message( FATAL_ERROR "Version.cmake is required")
+endif()
+project( MyProject VERSION ${VERSION_SEMANTIC} ) 
+```
+
+To use the Version.cmake wihtin a target:
+1. Add the link dependency to set the include path
+2. Add the #include directive
+3. Use the `VERSION_<field>` values in your code
+
+```cmake
+target_link_libraries( MyLibrary
     PRIVATE
         version::version
 )
 ```
+```cpp
+#include "Version.h"
+```
 
 # Advantages
 - **Small and reusable** so can be added to any CMake build
-- **Every build** has access to Version.h information
-- TODO: lots to think about & list
+- **Automatic update of buil-time variables** so code always has up-to date `Version.h` with no developer interaction.
+- **Short Git-SHA available** so multiple-developers can generate unique build versions.
+- **No re-configuring of CMake project necessary** as the build-time step will udpate version information for your build transparently.
+- ...lots more to think about & list
+
+# Limitations
+- **CMake variables** are cached and do not reflect the current development version.
+  <br/> :exclamation: This can affect version-name when using CPack Installers. See [Issue #1](https://github.com/BareCpper/Version.cmake/issues/1)
+- **Only Git support is currently maintained** but we would love you to [raise an issue](https://github.com/BareCpper/Version.cmake/issues)

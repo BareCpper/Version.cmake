@@ -152,7 +152,7 @@ else()
     set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
     set(VERSION_H "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
-    # If no Version.h.in exists we generate the template witht eh default
+    # If no Version.h.in exists we generate the template with the default
     message(CHECK_START "Find '${VERSION_H_FILENAME}.in'")
     if ( NOT EXISTS ${VERSION_H_TEMPLATE} )
         set(VERSION_H_TEMPLATE "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}.in")
@@ -164,6 +164,7 @@ else()
 #define VERSION_MINOR @_VERSION_MINOR@
 #define VERSION_PATCH @_VERSION_PATCH@
 #define VERSION_COMMIT @_VERSION_COMMIT@
+#define VERSION_SHA "@_VERSION_SHA@"
 #define VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
 #define VERSION_FULL "@_VERSION_FULL@"
       ]=])
