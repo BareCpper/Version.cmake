@@ -36,7 +36,7 @@ endif()
     
 # Git describe
 # @note Exclude 'tweak' tags in the form v0.1.2-30 i.e. with the '-30' to avoid a second suffix being appended e.g v0.1.2-30-12
-set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"--no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*"--always --dirty --long)
+set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"--no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*" --always --dirty --long)
 
 # Git count
 # @note We only count commits on the current branch and not comits in merge branches via '--first-parent'. The count is never unique but the Sha will be!
@@ -45,10 +45,10 @@ set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"rev-lis
 macro(parseSemanticVersion semVer)
     if( "${semVer}"MATCHES "^v?([0-9]+)[.]([0-9]+)[.]?([0-9]+)?[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$")
         set( VERSON_SET TRUE)
-        math( EXPR VERSION_MAJOR "${CMAKE_MATCH_1}+0" OUTPUT_FORMAT DECIMAL)
-        math( EXPR VERSION_MINOR "${CMAKE_MATCH_2}+0" OUTPUT_FORMAT DECIMAL)
-        math( EXPR VERSION_PATCH "${CMAKE_MATCH_3}+0" OUTPUT_FORMAT DECIMAL)
-        math( EXPR VERSION_COMMIT "${CMAKE_MATCH_4}+0"OUTPUT_FORMAT DECIMAL)
+        math( EXPR VERSION_MAJOR  "${CMAKE_MATCH_1}+0")
+        math( EXPR VERSION_MINOR  "${CMAKE_MATCH_2}+0")
+        math( EXPR VERSION_PATCH  "${CMAKE_MATCH_3}+0")
+        math( EXPR VERSION_COMMIT "${CMAKE_MATCH_4}+0")
         set( VERSION_SHA   "${CMAKE_MATCH_5}")
         set( VERSION_DIRTY "${CMAKE_MATCH_6}")
         set( VERSION_SEMANTIC ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${VERSION_COMMIT} )    
@@ -76,7 +76,7 @@ else()
     message(CHECK_START "Parse version")
     parseSemanticVersion(${git_describe})
     if( ${VERSON_SET} )
-        message(CHECK_PASS "Tag '${git_describe} is a valid semantic version [${VERSION_SEMANTIC}]")
+        message(CHECK_PASS "Tag '${git_describe}' is a valid semantic version [${VERSION_SEMANTIC}]")
     else()
         message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
     endif()
