@@ -12,7 +12,7 @@ cmake_minimum_required(VERSION 3.20)
 message(CHECK_START "GitVersion")
 list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
-set(VERSION_H_DIR "${CMAKE_BINARY_DIR}" )
+set(VERSION_H_DIR "${CMAKE_BINARY_DIR}")
 set(GIT_CACHE_DIR "${CMAKE_SOURCE_DIR}/.git")
 
 # TODO: We generate the .H as a separate build-target
@@ -26,31 +26,31 @@ message(CHECK_START "Find git")
 if( NOT DEFINED GIT_EXECUTABLE ) # Find Git or bail out
     find_package( Git )
     if( NOT Git_FOUND )
-        message(CHECK_FAIL "Not found in PATH" )
+        message(CHECK_FAIL "Not found in PATH")
     else()
-        message(CHECK_PASS "Found: '${GIT_EXECUTABLE}'" )
+        message(CHECK_PASS "Found: '${GIT_EXECUTABLE}'")
     endif()
 else()
-    message(CHECK_PASS "Using pre-defined GIT_EXECUTABLE: '${GIT_EXECUTABLE}'" )
+    message(CHECK_PASS "Using pre-defined GIT_EXECUTABLE: '${GIT_EXECUTABLE}'")
 endif()
     
 # Git describe
 # @note Exclude 'tweak' tags in the form v0.1.2-30 i.e. with the '-30' to avoid a second suffix being appended e.g v0.1.2-30-12
-set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" --no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*" --always --dirty --long)
+set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"--no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*"--always --dirty --long)
 
 # Git count
 # @note We only count commits on the current branch and not comits in merge branches via '--first-parent'. The count is never unique but the Sha will be!
-set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-list HEAD --count  --first-parent)
+set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}"-C "${CMAKE_CURRENT_SOURCE_DIR}"rev-list HEAD --count  --first-parent)
 
 macro(parseSemanticVersion semVer)
-    if( "${semVer}" MATCHES "^v?([0-9]+)[.]([0-9]+)[.]([0-9]+)[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$" )
+    if( "${semVer}"MATCHES "^v?([0-9]+)[.]([0-9]+)[.]?([0-9]+)?[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$")
         set( VERSON_SET TRUE)
-        set( VERSION_MAJOR "${CMAKE_MATCH_1}" )
-        set( VERSION_MINOR "${CMAKE_MATCH_2}" )
-        set( VERSION_PATCH "${CMAKE_MATCH_3}" )
-        set( VERSION_COMMIT "${CMAKE_MATCH_4}" )
-        set( VERSION_SHA   "${CMAKE_MATCH_5}" )
-        set( VERSION_DIRTY "${CMAKE_MATCH_6}" )
+        math( EXPR VERSION_MAJOR "${CMAKE_MATCH_1}+0" OUTPUT_FORMAT DECIMAL)
+        math( EXPR VERSION_MINOR "${CMAKE_MATCH_2}+0" OUTPUT_FORMAT DECIMAL)
+        math( EXPR VERSION_PATCH "${CMAKE_MATCH_3}+0" OUTPUT_FORMAT DECIMAL)
+        math( EXPR VERSION_COMMIT "${CMAKE_MATCH_4}+0"OUTPUT_FORMAT DECIMAL)
+        set( VERSION_SHA   "${CMAKE_MATCH_5}")
+        set( VERSION_DIRTY "${CMAKE_MATCH_6}")
         set( VERSION_SEMANTIC ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${VERSION_COMMIT} )    
         set( VERSION_FULL ${git_describe} )
     else()
@@ -69,16 +69,16 @@ execute_process(
     ${capture_output}
 )
 if( NOT git_result EQUAL 0 )
-    message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_describe}' \nERROR_VARIABLE:'${git_error}'" )
+    message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_describe}' \nERROR_VARIABLE:'${git_error}'")
 else()
-    message(CHECK_PASS "Success '${git_describe}'" )
+    message(CHECK_PASS "Success '${git_describe}'")
 
     message(CHECK_START "Parse version")
     parseSemanticVersion(${git_describe})
     if( ${VERSON_SET} )
-        message(CHECK_PASS " git-tag '${git_describe} is a valid semantic version" )
+        message(CHECK_PASS "Tag '${git_describe} is a valid semantic version [${VERSION_SEMANTIC}]")
     else()
-        message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'" )
+        message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
     endif()
 endif()
     
@@ -94,18 +94,18 @@ if(NOT DEFINED VERSION_FULL)
         ${capture_output}
     )
     if( NOT git_result EQUAL 0 )
-        message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${git_error}'" )
+        message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${git_error}'")
     else()    
         set(git_describe "0.0.0-${git_count}-g${git_describe}")
         parseSemanticVersion(${git_describe})
         if( ${VERSON_SET} )
-            message(CHECK_PASS " git-tag '${git_describe} is a valid semantic version" )
+            message(CHECK_PASS "git-tag '${git_describe} is a valid semantic version")
         else()
-            message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'" )
+            message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
         endif()
     endif()
 
-   # message( STATUS " Git Commit-Count '${VERSION_FULL}'" )
+   # message( STATUS "Git Commit-Count '${VERSION_FULL}'")
 endif()
 
 
@@ -129,7 +129,7 @@ else()
     message(CHECK_START "Find 'Version.h.in'")
     if ( NOT EXISTS ${GIT_VERSION_SRC} )
         set(GIT_VERSION_SRC "${CMAKE_CURRENT_BINARY_DIR}/Version.h.in")
-        message( CHECK_FAIL "Not Found, generating '${GIT_VERSION_SRC}'")
+        message( CHECK_FAIL "Not Found. Generating '${GIT_VERSION_SRC}'")
 
         file(WRITE ${GIT_VERSION_SRC}
       [=[
@@ -153,13 +153,13 @@ else()
             "${GIT_CACHE_DIR}/HEAD"
         COMMENT "GitVersion: Generating Version.h"
         COMMAND ${CMAKE_COMMAND}            
-            -B "${CMAKE_CURRENT_BINARY_DIR}" 
+            -B "${CMAKE_CURRENT_BINARY_DIR}"
             -D GIT_VERSION_SRC="${GIT_VERSION_SRC}"
             -D GIT_VERSION_DST="${GIT_VERSION_DST}"
             -D GIT_EXECUTABLE="${GIT_EXECUTABLE}"
             -D CMAKE_MODULE_PATH=${CMAKE_MODULE_PATH} 
-            -P "${CMAKE_CURRENT_LIST_FILE}"  
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"        
+            -P "${CMAKE_CURRENT_LIST_FILE}" 
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"       
     )
 
     add_library( gitVersion INTERFACE )
@@ -172,7 +172,7 @@ else()
 
     target_sources( gitVersion 
         INTERFACE 
-            "${VERSION_H_DIR}/Version.h" )
+            "${VERSION_H_DIR}/Version.h")
     add_dependencies( gitVersion 
         INTERFACE genGitVersion )
         
@@ -181,7 +181,7 @@ endif()
 
 list(POP_BACK CMAKE_MESSAGE_INDENT)
 if(EXISTS ${GIT_VERSION_DST})
-  message(CHECK_FAIL "${GIT_VERSION_DST} found or generated")
+  message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}]")
 else()
-  message(CHECK_PASS "${VERSION_FULL} : ${GIT_VERSION_DST}")
+  message(CHECK_FAIL "Failed, ${GIT_VERSION_DST} not available")
 endif()
