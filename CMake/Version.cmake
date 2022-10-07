@@ -12,11 +12,11 @@ cmake_minimum_required(VERSION 3.20)
 message(CHECK_START "GitVersion")
 list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
-set(VERSION_H_DIR "${CMAKE_BINARY_DIR}")
-set(GIT_CACHE_DIR "${CMAKE_SOURCE_DIR}/.git")
+set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}")
+set(VERSION_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # TODO: We generate the .H as a separate build-target
-if( DEFINED GIT_VERSION_DST )
+if( DEFINED VERSION_H )
     set(GITVERSION_DO_CONFIGURE TRUE)
     message(CHECK_PASS "Do Configure GitVersion")
 endif()
@@ -36,11 +36,14 @@ endif()
     
 # Git describe
 # @note Exclude 'tweak' tags in the form v0.1.2-30 i.e. with the '-30' to avoid a second suffix being appended e.g v0.1.2-30-12
-set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" --no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*" --always --dirty --long)
+set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" --no-pager describe --tags --exclude "v[0-9]*.[0-9]*.[0-9]*-[0-9]*" --always --dirty --long)
 
 # Git count
 # @note We only count commits on the current branch and not comits in merge branches via '--first-parent'. The count is never unique but the Sha will be!
-set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-list HEAD --count  --first-parent)
+set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-list HEAD --count  --first-parent)
+
+# Git cache path
+set(GIT_CACHE_PATH_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-parse --git-dir)
 
 macro(parseSemanticVersion semVer)
     if( "${semVer}" MATCHES "^v?([0-9]+)[.]([0-9]+)[.]?([0-9]+)?[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$")
@@ -58,7 +61,24 @@ macro(parseSemanticVersion semVer)
     endif()
 endmacro()
 
-message(CHECK_START "Git-Describe")
+message(CHECK_START "Git Cache-Path")
+execute_process(
+    COMMAND           ${GIT_CACHE_PATH_COMMAND}
+    RESULT_VARIABLE   git_result
+    OUTPUT_VARIABLE   GIT_CACHE_PATH
+    ERROR_VARIABLE    git_error
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_STRIP_TRAILING_WHITESPACE
+    ${capture_output}
+)
+if( NOT git_result EQUAL 0 )
+    message( CHECK_FAIL "Failed: ${GIT_CACHE_PATH_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${GIT_CACHE_PATH}' \nERROR_VARIABLE:'${git_error}'")
+else()
+    file(TO_CMAKE_PATH "${VERSION_SOURCE_DIR}/${GIT_CACHE_PATH}" GIT_CACHE_PATH)
+    message(CHECK_PASS "Success '${GIT_CACHE_PATH}'")
+endif()
+
+message(CHECK_START "Git Describe")
 execute_process(
     COMMAND           ${GIT_VERSION_COMMAND}
     RESULT_VARIABLE   git_result
@@ -94,7 +114,7 @@ if(NOT DEFINED VERSION_FULL)
         ${capture_output}
     )
     if( NOT git_result EQUAL 0 )
-        message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${git_error}'")
+        message( CHECK_FAIL "Failed: ${GIT_COUNT_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${git_error}'")
     else()    
         set(git_describe "0.0.0-${git_count}-g${git_describe}")
         parseSemanticVersion(${git_describe})
@@ -109,29 +129,30 @@ if(NOT DEFINED VERSION_FULL)
 endif()
 
 
-function(gitversion_configure_file GIT_VERSION_SRC GIT_VERSION_DST) 
+function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H) 
     message( "VERSION_SEMANTIC ${VERSION_SEMANTIC}")
     message( "VERSION_FULL ${VERSION_FULL}")
 
     configure_file (
-        "${GIT_VERSION_SRC}"
-        "${GIT_VERSION_DST}"
+        "${VERSION_H_TEMPLATE}"
+        "${VERSION_H}"
     )
 endfunction()
 
 if ( GITVERSION_DO_CONFIGURE )
-    gitversion_configure_file( ${GIT_VERSION_SRC} ${GIT_VERSION_DST})
+    gitversion_configure_file( ${VERSION_H_TEMPLATE} ${VERSION_H})
 else() 
-    set(GIT_VERSION_SRC "${CMAKE_CURRENT_LIST_DIR}/Version.h.in")
-    set(GIT_VERSION_DST "${VERSION_H_DIR}/Version.h")
+    set(VERSION_H_FILENAME "Version.h")
+    set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
+    set(VERSION_H "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
     # If no Version.h.in exists we generate the template witht eh default
-    message(CHECK_START "Find 'Version.h.in'")
-    if ( NOT EXISTS ${GIT_VERSION_SRC} )
-        set(GIT_VERSION_SRC "${CMAKE_CURRENT_BINARY_DIR}/Version.h.in")
-        message( CHECK_FAIL "Not Found. Generating '${GIT_VERSION_SRC}'")
+    message(CHECK_START "Find '${VERSION_H_FILENAME}.in'")
+    if ( NOT EXISTS ${VERSION_H_TEMPLATE} )
+        set(VERSION_H_TEMPLATE "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}.in")
+        message( CHECK_FAIL "Not Found. Generating '${VERSION_H_TEMPLATE}'")
 
-        file(WRITE ${GIT_VERSION_SRC}
+        file(WRITE ${VERSION_H_TEMPLATE}
       [=[
 #define VERSION_MAJOR @VERSION_MAJOR@
 #define VERSION_MINOR @VERSION_MINOR@
@@ -141,29 +162,30 @@ else()
 #define VERSION_FULL "@VERSION_FULL@"
       ]=])
     else()
-        message( CHECK_PASS "Found '${GIT_VERSION_SRC}'")
+        message( CHECK_PASS "Found '${VERSION_H_TEMPLATE}'")
     endif()
 
     # A custom target is used to update Version.h
     add_custom_target( genGitVersion
         ALL
-        BYPRODUCTS "${VERSION_H_DIR}/Version.h"
-        SOURCES "${GIT_VERSION_SRC}"
-        DEPENDS "${GIT_CACHE_DIR}/index"
-            "${GIT_CACHE_DIR}/HEAD"
-        COMMENT "GitVersion: Generating Version.h"
+        BYPRODUCTS "${VERSION_H}"
+        SOURCES "${VERSION_H_TEMPLATE}"
+        DEPENDS "${GIT_CACHE_PATH}/index"
+            "${GIT_CACHE_PATH}/HEAD"
+        COMMENT "Version.cmake: Generating `${VERSION_H_FILE}`"
         COMMAND ${CMAKE_COMMAND}            
-            -B "${CMAKE_CURRENT_BINARY_DIR}"
-            -D GIT_VERSION_SRC="${GIT_VERSION_SRC}"
-            -D GIT_VERSION_DST="${GIT_VERSION_DST}"
+            -B "${VERSION_OUT_DIR}"
+            -D VERSION_H_TEMPLATE="${VERSION_H_TEMPLATE}"
+            -D VERSION_H="${VERSION_H}"
             -D GIT_EXECUTABLE="${GIT_EXECUTABLE}"
             -D CMAKE_MODULE_PATH=${CMAKE_MODULE_PATH} 
             -P "${CMAKE_CURRENT_LIST_FILE}" 
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"       
+        WORKING_DIRECTORY "${VERSION_SOURCE_DIR}"  
+        VERBATIM
     )
 
     add_library( gitVersion INTERFACE )
-    target_include_directories(gitVersion INTERFACE "${VERSION_H_DIR}")
+    target_include_directories(gitVersion INTERFACE "${VERSION_OUT_DIR}")
 
     # @note Explicit file-names - prevent Cmake finding `Version.h.in` for `Version.h`
     if (POLICY CMP0115)
@@ -172,7 +194,7 @@ else()
 
     target_sources( gitVersion 
         INTERFACE 
-            "${VERSION_H_DIR}/Version.h")
+            "${VERSION_H}")
     add_dependencies( gitVersion 
         INTERFACE genGitVersion )
         
@@ -180,8 +202,12 @@ else()
 endif()
 
 list(POP_BACK CMAKE_MESSAGE_INDENT)
-if(EXISTS ${GIT_VERSION_DST})
-  message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}]")
+
+get_source_file_property(VERSION_H_GENERATED "${VERSION_H}" GENERATED )
+if ( ${VERSION_H_GENERATED} )
+    message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}] {Generated}")
+elseif(EXISTS ${VERSION_H})
+    message(CHECK_PASS "Using pre-defined '${VERSION_H}'")
 else()
-  message(CHECK_FAIL "Failed, ${GIT_VERSION_DST} not available")
+  message(CHECK_FAIL "Failed, ${VERSION_H} not available")
 endif()
