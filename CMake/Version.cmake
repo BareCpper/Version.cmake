@@ -15,12 +15,6 @@ list(APPEND CMAKE_MESSAGE_INDENT "  ")
 set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}")
 set(VERSION_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# TODO: We generate the .H as a separate build-target
-if( DEFINED VERSION_H )
-    set(GITVERSION_DO_CONFIGURE TRUE)
-    message(CHECK_PASS "Do Configure GitVersion")
-endif()
-
 # Get gitVersion information
 message(CHECK_START "Find git")
 if( NOT DEFINED GIT_EXECUTABLE ) # Find Git or bail out
@@ -77,6 +71,9 @@ else()
     file(TO_CMAKE_PATH "${VERSION_SOURCE_DIR}/${GIT_CACHE_PATH}" GIT_CACHE_PATH)
     message(CHECK_PASS "Success '${GIT_CACHE_PATH}'")
 endif()
+
+message( "GIT_CACHE_PATH_COMMAND ${GIT_CACHE_PATH_COMMAND}")
+
 
 message(CHECK_START "Git Describe")
 execute_process(
@@ -139,7 +136,7 @@ function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H)
     )
 endfunction()
 
-if ( GITVERSION_DO_CONFIGURE )
+if ( VERSION_GENERATE_NOW )
     gitversion_configure_file( ${VERSION_H_TEMPLATE} ${VERSION_H})
 else() 
     set(VERSION_H_FILENAME "Version.h")
@@ -161,6 +158,9 @@ else()
 #define VERSION_SEMANTIC "@VERSION_SEMANTIC@"
 #define VERSION_FULL "@VERSION_FULL@"
       ]=])
+        if ( NOT EXISTS ${VERSION_H_TEMPLATE} )
+            message( FATAL_ERROR "Failed to create template ${VERSION_H_TEMPLATE}")
+        endif()
     else()
         message( CHECK_PASS "Found '${VERSION_H_TEMPLATE}'")
     endif()
@@ -175,12 +175,13 @@ else()
         COMMENT "Version.cmake: Generating `${VERSION_H_FILE}`"
         COMMAND ${CMAKE_COMMAND}            
             -B "${VERSION_OUT_DIR}"
-            -D VERSION_H_TEMPLATE="${VERSION_H_TEMPLATE}"
-            -D VERSION_H="${VERSION_H}"
-            -D GIT_EXECUTABLE="${GIT_EXECUTABLE}"
+            -D VERSION_GENERATE_NOW=YES
+            -D VERSION_H_TEMPLATE=${VERSION_H_TEMPLATE}
+            -D VERSION_H=${VERSION_H}
+            -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
             -D CMAKE_MODULE_PATH=${CMAKE_MODULE_PATH} 
-            -P "${CMAKE_CURRENT_LIST_FILE}" 
-        WORKING_DIRECTORY "${VERSION_SOURCE_DIR}"  
+            -P ${CMAKE_CURRENT_LIST_FILE}
+        WORKING_DIRECTORY ${VERSION_SOURCE_DIR}  
         VERBATIM
     )
 
@@ -203,7 +204,12 @@ endif()
 
 list(POP_BACK CMAKE_MESSAGE_INDENT)
 
-get_source_file_property(VERSION_H_GENERATED "${VERSION_H}" GENERATED )
+if(VERSION_GENERATE_NOW)
+    set(VERSION_H_GENERATED TRUE)
+else()
+    get_source_file_property(VERSION_H_GENERATED "${VERSION_H}" GENERATED )
+endif()
+
 if ( ${VERSION_H_GENERATED} )
     message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}] {Generated}")
 elseif(EXISTS ${VERSION_H})
