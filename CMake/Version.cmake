@@ -9,13 +9,13 @@ cmake_minimum_required(VERSION 3.20)
     #return()
 #endif()
 
-message(CHECK_START "GitVersion")
+message(CHECK_START "Version.cmake")
 list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
 set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}")
 set(VERSION_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# Get gitVersion information
+# Get cmakeVersion information
 message(CHECK_START "Find git")
 if( NOT DEFINED GIT_EXECUTABLE ) # Find Git or bail out
     find_package( Git )
@@ -118,10 +118,7 @@ if(NOT DEFINED VERSION_FULL)
             message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
         endif()
     endif()
-
-   # message( STATUS "Git Commit-Count '${VERSION_FULL}'")
 endif()
-
 
 function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H)
     configure_file (
@@ -160,7 +157,7 @@ else()
     endif()
 
     # A custom target is used to update Version.h
-    add_custom_target( genGitVersion
+    add_custom_target( genCmakeVersion
         ALL
         BYPRODUCTS "${VERSION_H}"
         SOURCES "${VERSION_H_TEMPLATE}"
@@ -179,21 +176,21 @@ else()
         VERBATIM
     )
 
-    add_library( gitVersion INTERFACE )
-    target_include_directories(gitVersion INTERFACE "${VERSION_OUT_DIR}")
+    add_library( cmakeVersion INTERFACE )
+    target_include_directories(cmakeVersion INTERFACE "${VERSION_OUT_DIR}")
 
     # @note Explicit file-names - prevent Cmake finding `Version.h.in` for `Version.h`
     if (POLICY CMP0115)
         cmake_policy(SET CMP0115 NEW)
     endif()
 
-    target_sources( gitVersion 
+    target_sources( cmakeVersion 
         INTERFACE 
             "${VERSION_H}")
-    add_dependencies( gitVersion 
-        INTERFACE genGitVersion )
+    add_dependencies( cmakeVersion 
+        INTERFACE genCmakeVersion )
         
-    add_library( git::version ALIAS gitVersion )
+    add_library( version::version ALIAS cmakeVersion )
 endif()
 
 list(POP_BACK CMAKE_MESSAGE_INDENT)
