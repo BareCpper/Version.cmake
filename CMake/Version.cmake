@@ -12,8 +12,8 @@ cmake_minimum_required(VERSION 3.20)
 message(CHECK_START "Version.cmake")
 list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
-set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}")
-set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Destination directory into which `Version.cmake` shall genrate Versioning header files")
+set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH "Repositroy directory used for `Version.cmake` repo versioning")
 
 # Get cmakeVersion information
 message(CHECK_START "Find git")
@@ -41,85 +41,97 @@ set(GIT_CACHE_PATH_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-pa
 
 macro(version_parseSemantic semVer)
     if( "${semVer}" MATCHES "^v?([0-9]+)[.]([0-9]+)[.]?([0-9]+)?[-]([0-9]+)[-][g]([.0-9A-Fa-f]+)[-]?(dirty)?$")
-        set( VERSON_SET TRUE)
-        math( EXPR VERSION_MAJOR  "${CMAKE_MATCH_1}+0")
-        math( EXPR VERSION_MINOR  "${CMAKE_MATCH_2}+0")
-        math( EXPR VERSION_PATCH  "${CMAKE_MATCH_3}+0")
-        math( EXPR VERSION_COMMIT "${CMAKE_MATCH_4}+0")
-        set( VERSION_SHA   "${CMAKE_MATCH_5}")
-        set( VERSION_DIRTY "${CMAKE_MATCH_6}")
-        set( VERSION_SEMANTIC ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${VERSION_COMMIT} )    
-        set( VERSION_FULL ${git_describe} )
+        set( _VERSION_SET TRUE)
+        math( EXPR _VERSION_MAJOR  "${CMAKE_MATCH_1}+0")
+        math( EXPR _VERSION_MINOR  "${CMAKE_MATCH_2}+0")
+        math( EXPR _VERSION_PATCH  "${CMAKE_MATCH_3}+0")
+        math( EXPR _VERSION_COMMIT "${CMAKE_MATCH_4}+0")
+        set( _VERSION_SHA   "${CMAKE_MATCH_5}")
+        set( _VERSION_DIRTY "${CMAKE_MATCH_6}")
+        set( _VERSION_SEMANTIC ${_VERSION_MAJOR}.${_VERSION_MINOR}.${_VERSION_PATCH}.${_VERSION_COMMIT} )    
+        set( _VERSION_FULL ${_GIT_DESCRIBE} )
     else()
-        set( VERSON_SET FALSE)
+        set( _VERSION_SET FALSE)
     endif()
 endmacro()
 
 macro(version_export_variables)
-    set(VERSION_SEMANTIC ${VERSION_SEMANTIC} CACHE INTERNAL "" FORCE)
+    set( VERSION_SET      ${_VERSION_SET} CACHE INTERNAL "" FORCE)
+    set( VERSION_MAJOR    ${_VERSION_MAJOR} CACHE INTERNAL "" FORCE)
+    set( VERSION_MINOR    ${_VERSION_MINOR} CACHE INTERNAL "" FORCE)
+    set( VERSION_PATCH    ${_VERSION_PATCH} CACHE INTERNAL "" FORCE)
+    set( VERSION_COMMIT   ${_VERSION_COMMIT} CACHE INTERNAL "" FORCE)
+    set( VERSION_SHA      ${_VERSION_SHA} CACHE INTERNAL "" FORCE)
+    set( VERSION_DIRTY    ${_VERSION_DIRTY} CACHE INTERNAL "" FORCE)
+    set( VERSION_SEMANTIC ${_VERSION_SEMANTIC} CACHE INTERNAL "" FORCE)
+    set( VERSION_FULL     ${_VERSION_FULL} CACHE INTERNAL "" FORCE)
 endmacro()
 
 message(CHECK_START "Git Cache-Path")
-execute_process(
-    COMMAND           ${GIT_CACHE_PATH_COMMAND}
-    RESULT_VARIABLE   git_result
-    OUTPUT_VARIABLE   GIT_CACHE_PATH
-    ERROR_VARIABLE    git_error
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_STRIP_TRAILING_WHITESPACE
-    ${capture_output}
-)
-if( NOT git_result EQUAL 0 )
-    message( CHECK_FAIL "Failed: ${GIT_CACHE_PATH_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${GIT_CACHE_PATH}' \nERROR_VARIABLE:'${git_error}'")
+if ( DEFINED GIT_CACHE_PATH)
+    message(CHECK_PASS "Using pre-defined GIT_CACHE_PATH '${GIT_CACHE_PATH}'")
 else()
-    file(TO_CMAKE_PATH "${VERSION_SOURCE_DIR}/${GIT_CACHE_PATH}" GIT_CACHE_PATH)
-    message(CHECK_PASS "Success '${GIT_CACHE_PATH}'")
+    execute_process(
+        COMMAND           ${GIT_CACHE_PATH_COMMAND}
+        RESULT_VARIABLE   _GIT_RESULT
+        OUTPUT_VARIABLE   GIT_CACHE_PATH
+        ERROR_VARIABLE    _GIT_ERROR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+        ${capture_output}
+    )
+    if( NOT _GIT_RESULT EQUAL 0 )
+        message( CHECK_FAIL "Failed: ${GIT_CACHE_PATH_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${GIT_CACHE_PATH}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
+    else()
+        file(TO_CMAKE_PATH "${VERSION_SOURCE_DIR}/${GIT_CACHE_PATH}" GIT_CACHE_PATH)
+        message(CHECK_PASS "Success '${GIT_CACHE_PATH}'")
+    endif()
 endif()
 
 message(CHECK_START "Git Describe")
 execute_process(
     COMMAND           ${GIT_VERSION_COMMAND}
-    RESULT_VARIABLE   git_result
-    OUTPUT_VARIABLE   git_describe
-    ERROR_VARIABLE    git_error
+    RESULT_VARIABLE   _GIT_RESULT
+    OUTPUT_VARIABLE   _GIT_DESCRIBE
+    ERROR_VARIABLE    _GIT_ERROR
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_STRIP_TRAILING_WHITESPACE
     ${capture_output}
 )
-if( NOT git_result EQUAL 0 )
-    message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_describe}' \nERROR_VARIABLE:'${git_error}'")
+if( NOT _GIT_RESULT EQUAL 0 )
+    message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${_GIT_DESCRIBE}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
 else()
-    message(CHECK_PASS "Success '${git_describe}'")
+    message(CHECK_PASS "Success '${_GIT_DESCRIBE}'")
 
     message(CHECK_START "Parse version")
-    version_parseSemantic(${git_describe})
-    if( ${VERSON_SET} )
-        message(CHECK_PASS "Tag '${git_describe}' is a valid semantic version [${VERSION_SEMANTIC}]")
+    version_parseSemantic(${_GIT_DESCRIBE})
+    if( ${_VERSION_SET} )
+        message(CHECK_PASS "Tag '${_GIT_DESCRIBE}' is a valid semantic version [${_VERSION_SEMANTIC}]")
     else()
-        message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
+        message(CHECK_FAIL "'${_GIT_DESCRIBE}' is not a valid semantic-version e.g. 'v0.1.2-30'")
     endif()
 endif()
     
-if(NOT DEFINED VERSION_FULL)
+if(NOT DEFINED _VERSION_FULL)
     message(CHECK_START "Fallback as Git-Count")
     execute_process(
         COMMAND           ${GIT_COUNT_COMMAND}
-        RESULT_VARIABLE   git_result
+        RESULT_VARIABLE   _GIT_RESULT
         OUTPUT_VARIABLE   git_count
-        ERROR_VARIABLE    git_error
+        ERROR_VARIABLE    _GIT_ERROR
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_STRIP_TRAILING_WHITESPACE
         ${capture_output}
     )
-    if( NOT git_result EQUAL 0 )
-        message( CHECK_FAIL "Failed: ${GIT_COUNT_COMMAND}\nRESULT_VARIABLE:'${git_result}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${git_error}'")
+    if( NOT _GIT_RESULT EQUAL 0 )
+        message( CHECK_FAIL "Failed: ${GIT_COUNT_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
     else()    
-        set(git_describe "0.0.0-${git_count}-g${git_describe}")
-        version_parseSemantic(${git_describe})
-        if( ${VERSON_SET} )
-            message(CHECK_PASS "git-tag '${git_describe} is a valid semantic version")
+        set(_GIT_DESCRIBE "0.0.0-${git_count}-g${_GIT_DESCRIBE}")
+        version_parseSemantic(${_GIT_DESCRIBE})
+        if( ${VERSION_SET} )
+            message(CHECK_PASS "git-tag '${_GIT_DESCRIBE} is a valid semantic version")
         else()
-            message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
+            message(CHECK_FAIL "'${_GIT_DESCRIBE}' is not a valid semantic-version e.g. 'v0.1.2-30'")
         endif()
     endif()
 endif()
@@ -130,6 +142,8 @@ function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H)
         "${VERSION_H}"
     )
 endfunction()
+
+version_export_variables()
 
 if ( VERSION_GENERATE_NOW )
     gitversion_configure_file( ${VERSION_H_TEMPLATE} ${VERSION_H})
@@ -146,12 +160,12 @@ else()
 
         file(WRITE ${VERSION_H_TEMPLATE}
       [=[
-#define VERSION_MAJOR @VERSION_MAJOR@
-#define VERSION_MINOR @VERSION_MINOR@
-#define VERSION_PATCH @VERSION_PATCH@
-#define VERSION_COMMIT @VERSION_COMMIT@
-#define VERSION_SEMANTIC "@VERSION_SEMANTIC@"
-#define VERSION_FULL "@VERSION_FULL@"
+#define VERSION_MAJOR @_VERSION_MAJOR@
+#define VERSION_MINOR @_VERSION_MINOR@
+#define VERSION_PATCH @_VERSION_PATCH@
+#define VERSION_COMMIT @_VERSION_COMMIT@
+#define VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
+#define VERSION_FULL "@_VERSION_FULL@"
       ]=])
         if ( NOT EXISTS ${VERSION_H_TEMPLATE} )
             message( FATAL_ERROR "Failed to create template ${VERSION_H_TEMPLATE}")
@@ -212,5 +226,3 @@ elseif(EXISTS ${VERSION_H})
 else()
     message(CHECK_FAIL "Failed, ${VERSION_H} not available")
 endif()
-
-version_export_variables()
