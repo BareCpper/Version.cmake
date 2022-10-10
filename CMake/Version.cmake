@@ -182,7 +182,7 @@ else()
         SOURCES "${VERSION_H_TEMPLATE}"
         DEPENDS "${GIT_CACHE_PATH}/index"
             "${GIT_CACHE_PATH}/HEAD"
-        COMMENT "Version.cmake: Generating `${VERSION_H_FILE}`"
+        COMMENT "Version.cmake: Generating `${VERSION_H_FILENAME}`"
         COMMAND ${CMAKE_COMMAND}            
             -B "${VERSION_OUT_DIR}"
             -D VERSION_GENERATE_NOW=YES
