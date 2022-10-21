@@ -8,4 +8,4 @@ if ( NOT hasParent OR PROJECT_IS_TOP_LEVEL)
 	project(Version.cmake)
 endif()
 
-include(cmake/Version.cmake)
+include(CMake/Version.cmake)
