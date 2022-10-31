@@ -69,12 +69,9 @@ target_link_libraries( MyLibrary
 
 # Advantages
 - **Small and reusable** so can be added to any CMake build
-- **Automatic update of buil-time variables** so code always has up-to date `Version.h` with no developer interaction.
-- **Short Git-SHA available** so multiple-developers can generate unique build versions.
 - **No re-configuring of CMake project necessary** as the build-time step will udpate version information for your build transparently.
 - ...lots more to think about & list
 
 # Limitations
-- **CMake variables** are cached and do not reflect the current development version.
-  <br/> :exclamation: This can affect version-name when using CPack Installers. See [Issue #1](https://github.com/BareCpper/Version.cmake/issues/1)
-- **Only Git support is currently maintained** but we would love you to [raise an issue](https://github.com/BareCpper/Version.cmake/issues)
+- No support for Native NDK `Service`
+- TODO [raise an issue](https://github.com/BareCpper/Version.cmake/issues)
