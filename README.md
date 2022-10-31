@@ -42,7 +42,8 @@ include(CPM)
 CPMAddPackage("gh:BareCpper/Version.cmake")
 ```
 
-Optionally you can set the version on the `project(...)` for which it is worth also checkin `VERSION_SET`:
+You may wish to optionally set the PROJECT version on the `project(...)`. 
+If so we recommend checking `VERSION_SET == True`:
 ```cmake
 if ( NOT VERSION_SET )
     message( FATAL_ERROR "Version.cmake is required")
@@ -50,10 +51,11 @@ endif()
 project( MyProject VERSION ${VERSION_SEMANTIC} ) 
 ```
 
-To use the Version.cmake wihtin a target:
-1. Add the link dependency to set the include path
-2. Add the #include directive
-3. Use the `VERSION_<field>` values in your code
+To use the Version information within a cmake build target:
+1. Add `version::version` to the `target_link_libraries` for the target library/executable etc
+2. Add `Version.h` via the `#include` directive
+3. Use the `VERSION_<field>` preprocessor values in your code
+ <br/> :gem: The default template `.in` defines C-preprocessor directives. For Modern C++ we intent to support constexpr constants in an upcoming release. 
 
 ```cmake
 target_link_libraries( MyLibrary
