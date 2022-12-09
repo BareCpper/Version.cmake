@@ -34,7 +34,7 @@ set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" --no-page
 
 # Git count
 # @note We only count commits on the current branch and not comits in merge branches via '--first-parent'. The count is never unique but the Sha will be!
-set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-list HEAD --count  --first-parent)
+set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-list --count  --first-parent HEAD)
 
 # Git cache path
 set(GIT_CACHE_PATH_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-parse --git-dir)
@@ -49,7 +49,7 @@ macro(version_parseSemantic semVer)
         set( _VERSION_SHA   "${CMAKE_MATCH_5}")
         set( _VERSION_DIRTY "${CMAKE_MATCH_6}")
         set( _VERSION_SEMANTIC ${_VERSION_MAJOR}.${_VERSION_MINOR}.${_VERSION_PATCH}.${_VERSION_COMMIT} )    
-        set( _VERSION_FULL ${_GIT_DESCRIBE} )
+        set( _VERSION_FULL ${git_describe} )
     else()
         set( _VERSION_SET FALSE)
     endif()
@@ -92,27 +92,30 @@ message(CHECK_START "Git Describe")
 execute_process(
     COMMAND           ${GIT_VERSION_COMMAND}
     RESULT_VARIABLE   _GIT_RESULT
-    OUTPUT_VARIABLE   _GIT_DESCRIBE
+    OUTPUT_VARIABLE   git_describe
     ERROR_VARIABLE    _GIT_ERROR
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_STRIP_TRAILING_WHITESPACE
     ${capture_output}
 )
 if( NOT _GIT_RESULT EQUAL 0 )
-    message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${_GIT_DESCRIBE}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
+    message( CHECK_FAIL "Failed: ${GIT_VERSION_COMMAND}\nResult:'${_GIT_RESULT}' Error:'${_GIT_ERROR}'")
+    if ( "${_GIT_ERROR}" STREQUAL "fatal: bad revision 'HEAD'")
+        set(_VERSION_NOT_GIT_REPO TRUE) # Flag that we don't have a valid git-repository'
+    endif()
 else()
-    message(CHECK_PASS "Success '${_GIT_DESCRIBE}'")
+    message(CHECK_PASS "Success '${git_describe}'")
 
     message(CHECK_START "Parse version")
-    version_parseSemantic(${_GIT_DESCRIBE})
+    version_parseSemantic(${git_describe})
     if( ${_VERSION_SET} )
-        message(CHECK_PASS "Tag '${_GIT_DESCRIBE}' is a valid semantic version [${_VERSION_SEMANTIC}]")
+        message(CHECK_PASS "Tag '${git_describe}' is a valid semantic version [${_VERSION_SEMANTIC}]")
     else()
-        message(CHECK_FAIL "'${_GIT_DESCRIBE}' is not a valid semantic-version e.g. 'v0.1.2-30'")
+        message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
     endif()
 endif()
     
-if(NOT DEFINED _VERSION_FULL)
+if(NOT DEFINED _VERSION_FULL AND NOT _VERSION_NOT_GIT_REPO)
     message(CHECK_START "Fallback as Git-Count")
     execute_process(
         COMMAND           ${GIT_COUNT_COMMAND}
@@ -124,14 +127,14 @@ if(NOT DEFINED _VERSION_FULL)
         ${capture_output}
     )
     if( NOT _GIT_RESULT EQUAL 0 )
-        message( CHECK_FAIL "Failed: ${GIT_COUNT_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${git_count}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
+        message( CHECK_FAIL "Failed: ${GIT_COUNT_COMMAND}\nResult:'${_GIT_RESULT}' Error:'${_GIT_ERROR}'")
     else()    
-        set(_GIT_DESCRIBE "0.0.0-${git_count}-g${_GIT_DESCRIBE}")
-        version_parseSemantic(${_GIT_DESCRIBE})
+        set(git_describe "0.0.0-${git_count}-g${git_describe}")
+        version_parseSemantic(${git_describe})
         if( ${VERSION_SET} )
-            message(CHECK_PASS "git-tag '${_GIT_DESCRIBE} is a valid semantic version")
+            message(CHECK_PASS "git-tag '${git_describe} is a valid semantic version")
         else()
-            message(CHECK_FAIL "'${_GIT_DESCRIBE}' is not a valid semantic-version e.g. 'v0.1.2-30'")
+            message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
         endif()
     endif()
 endif()
@@ -220,10 +223,14 @@ else()
     get_source_file_property(VERSION_H_GENERATED "${VERSION_H}" GENERATED )
 endif()
 
-if ( ${VERSION_H_GENERATED} )
-    message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}] {Generated}")
-elseif(EXISTS ${VERSION_H})
-    message(CHECK_PASS "Using pre-defined '${VERSION_H}'")
+if ( NOT _VERSION_NOT_GIT_REPO )
+    if ( ${VERSION_H_GENERATED} )
+        message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}] {Generated}")
+    elseif(EXISTS ${VERSION_H})
+        message(CHECK_PASS "Using pre-defined '${VERSION_H}'")
+    else()
+        message(CHECK_FAIL "Failed, ${VERSION_H} not available")
+    endif()
 else()
-    message(CHECK_FAIL "Failed, ${VERSION_H} not available")
+    message(CHECK_FAIL "Failed, Error reading Git repository")
 endif()
