@@ -31,7 +31,7 @@ Values are defined similar both `CMake` and via the default `Version.h` using C-
 
 We recommend using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) so you stay upto-date with the latest fixes and features.
 
-Alternative, you may directly include `Version.cmake` in your project but we don't encourage this.
+Alternative, you may directly include `Version.cmake` in your project but we don't encourage this as to ensure you keep uptodate with latest fixes.
 
 ### Basic Usage
 
