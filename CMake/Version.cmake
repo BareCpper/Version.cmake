@@ -14,6 +14,7 @@ list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
 set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Destination directory into which `Version.cmake` shall genrate Versioning header files")
 set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH "Repositroy directory used for `Version.cmake` repo versioning")
+set(VERSION_PREFIX "" CACHE STRING "Prefix for generated files and definitions")
 
 # Get cmakeVersion information
 message(CHECK_START "Find git")
@@ -151,7 +152,7 @@ version_export_variables()
 if ( VERSION_GENERATE_NOW )
     gitversion_configure_file( ${VERSION_H_TEMPLATE} ${VERSION_H})
 else() 
-    set(VERSION_H_FILENAME "Version.h")
+    set(VERSION_H_FILENAME "${VERSION_PREFIX}Version.h")
     set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
     set(VERSION_H "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
@@ -163,13 +164,13 @@ else()
 
         file(WRITE ${VERSION_H_TEMPLATE}
       [=[
-#define VERSION_MAJOR @_VERSION_MAJOR@
-#define VERSION_MINOR @_VERSION_MINOR@
-#define VERSION_PATCH @_VERSION_PATCH@
-#define VERSION_COMMIT @_VERSION_COMMIT@
-#define VERSION_SHA "@_VERSION_SHA@"
-#define VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
-#define VERSION_FULL "@_VERSION_FULL@"
+#define ${VERSION_PREFIX}_VERSION_MAJOR @_VERSION_MAJOR@
+#define ${VERSION_PREFIX}_VERSION_MINOR @_VERSION_MINOR@
+#define ${VERSION_PREFIX}_VERSION_PATCH @_VERSION_PATCH@
+#define ${VERSION_PREFIX}_VERSION_COMMIT @_VERSION_COMMIT@
+#define ${VERSION_PREFIX}_VERSION_SHA "@_VERSION_SHA@"
+#define ${VERSION_PREFIX}_VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
+#define ${VERSION_PREFIX}_VERSION_FULL "@_VERSION_FULL@"
       ]=])
         if ( NOT EXISTS ${VERSION_H_TEMPLATE} )
             message( FATAL_ERROR "Failed to create template ${VERSION_H_TEMPLATE}")
