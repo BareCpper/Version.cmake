@@ -44,6 +44,10 @@ set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-list --
 # Git cache path
 set(GIT_CACHE_PATH_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-parse --git-dir)
 
+# Get current date
+string(TIMESTAMP VERSION_DATE "%Y-%m-%d" UTC)
+string(TIMESTAMP VERSION_DATETIME "%Y-%m-%d %H:%M:%S" UTC)
+
 macro(version_parseSemantic semVer)
     if("${semVer}" MATCHES "^v?([0-9]+)[._]([0-9]+)[._]?([0-9]+)?[-]([0-9]+)[-][g]([._0-9A-Fa-f]+)[-]?(dirty)?$")
         set(_VERSION_SET TRUE)
@@ -76,6 +80,8 @@ macro(version_export_variables)
     set(VERSION_DIRTY ${_VERSION_DIRTY} CACHE INTERNAL "" FORCE)
     set(VERSION_SEMANTIC ${_VERSION_SEMANTIC} CACHE INTERNAL "" FORCE)
     set(VERSION_FULL ${_VERSION_FULL} CACHE INTERNAL "" FORCE)
+    set(VERSION_DATE ${VERSION_DATE} CACHE INTERNAL "" FORCE)
+    set(VERSION_DATETIME ${VERSION_DATETIME} CACHE INTERNAL "" FORCE)
 endmacro()
 
 message(CHECK_START "Git Cache-Path")
@@ -189,6 +195,8 @@ else()
 #define @_VERSION_PREFIX@VERSION_SHA "@_VERSION_SHA@"
 #define @_VERSION_PREFIX@VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
 #define @_VERSION_PREFIX@VERSION_FULL "@_VERSION_FULL@"
+#define @_VERSION_PREFIX@VERSION_DATE "@VERSION_DATE@"
+#define @_VERSION_PREFIX@VERSION_DATETIME "@VERSION_DATETIME@"
       ]=])
 
         if(NOT EXISTS ${VERSION_H_TEMPLATE})
