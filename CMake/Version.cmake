@@ -45,8 +45,8 @@ set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-list --
 set(GIT_CACHE_PATH_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}" rev-parse --git-dir)
 
 # Get current date
-string(TIMESTAMP VERSION_DATE "%Y-%m-%d" UTC)
-string(TIMESTAMP VERSION_DATETIME "%Y-%m-%d %H:%M:%S" UTC)
+string(TIMESTAMP VERSION_DATE "%Y-%m-%d")
+string(TIMESTAMP VERSION_DATETIME "%Y-%m-%d %H:%M:%S")
 
 macro(version_parseSemantic semVer)
     if("${semVer}" MATCHES "^v?([0-9]+)[._]([0-9]+)[._]?([0-9]+)?[-]([0-9]+)[-][g]([._0-9A-Fa-f]+)[-]?(dirty)?$")
@@ -132,6 +132,7 @@ else()
 
     if(${_VERSION_SET})
         message(CHECK_PASS "Tag '${git_describe}' is a valid semantic version [${_VERSION_SEMANTIC}]")
+        message(STATUS "Git Datetime: ${VERSION_DATETIME}")
     else()
         message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
     endif()
