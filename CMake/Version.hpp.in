@@ -32,6 +32,10 @@ inline constexpr std::string_view version_sha    = "@_VERSION_SHA@";
 inline constexpr std::string_view version_string = "@_VERSION_SEMANTIC@";
 /// Full git-describe output, including dirty flag if applicable.
 inline constexpr std::string_view version_full   = "@_VERSION_FULL@";
+/// Build date (configure-time, not commit date): "YYYY-MM-DD".
+inline constexpr std::string_view version_date   = "@VERSION_DATE@";
+/// Build datetime (configure-time, ISO 8601): "YYYY-MM-DDTHH:MM:SSZ".
+inline constexpr std::string_view version_datetime = "@VERSION_DATETIME@";
 
 @_VERSION_NAMESPACE_END@
 
@@ -42,6 +46,8 @@ inline constexpr std::string_view version_full   = "@_VERSION_FULL@";
 #define @_VERSION_PREFIX@VERSION_MINOR   @_VERSION_MINOR@
 #define @_VERSION_PREFIX@VERSION_PATCH   @_VERSION_PATCH@
 #define @_VERSION_PREFIX@VERSION_COMMIT  @_VERSION_COMMIT@
-#define @_VERSION_PREFIX@VERSION_SHA     "@_VERSION_SHA@"
-#define @_VERSION_PREFIX@VERSION_STRING  "@_VERSION_SEMANTIC@"
-#define @_VERSION_PREFIX@VERSION_FULL    "@_VERSION_FULL@"
+#define @_VERSION_PREFIX@VERSION_SHA      "@_VERSION_SHA@"
+#define @_VERSION_PREFIX@VERSION_STRING   "@_VERSION_SEMANTIC@"
+#define @_VERSION_PREFIX@VERSION_FULL     "@_VERSION_FULL@"
+#define @_VERSION_PREFIX@VERSION_DATE     "@VERSION_DATE@"
+#define @_VERSION_PREFIX@VERSION_DATETIME "@VERSION_DATETIME@"
