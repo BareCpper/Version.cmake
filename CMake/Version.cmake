@@ -12,9 +12,43 @@ cmake_minimum_required(VERSION 3.20)
 message(CHECK_START "Version.cmake")
 list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
-set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Destination directory into which `Version.cmake` shall genrate Versioning header files")
-set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH "Repositroy directory used for `Version.cmake` repo versioning")
-set(VERSION_PREFIX "" CACHE STRING "Prefix for generated files and definitions")
+# ---------------------------------------------------------------------------
+# Configuration variables
+#
+# VERSION_OUT_DIR     -- Directory for the generated header file.
+#                        Default: CMAKE_BINARY_DIR.
+#                        Override before including Version.cmake to place the
+#                        header in a sub-directory, e.g.
+#                            set(VERSION_OUT_DIR "${CMAKE_BINARY_DIR}/include/myapp")
+#
+# VERSION_SOURCE_DIR  -- The git repository root to query.
+#                        Default: CMAKE_SOURCE_DIR.
+#                        Override for sub-module or CPM-fetched versioning.
+#
+# VERSION_PREFIX      -- Prefix for C preprocessor macros in the generated header,
+#                        e.g. "MYAPP_" produces MYAPP_VERSION_MAJOR.
+#                        Default: "" (no prefix -- suitable when only one library
+#                        uses this module). Set an explicit prefix when multiple
+#                        libraries use Version.cmake in the same build.
+#                        See: CMake/Version.hpp.in for the C++ constexpr template.
+#
+# VERSION_NAMESPACE   -- C++ namespace for constexpr constants in Version.hpp.in,
+#                        e.g. "myapp::version". Supports nested namespaces.
+#                        Default: "" (constants at global scope).
+#                        Only used when VERSION_H_FILENAME ends in ".hpp".
+#
+# VERSION_H_FILENAME  -- Output filename for the generated header.
+#                        Default: "${VERSION_PREFIX}Version.h"
+#                        Set to "version.hpp" (or "${VERSION_PREFIX}Version.hpp")
+#                        to use CMake/Version.hpp.in (C++20/23 constexpr output).
+#                        Version.cmake looks for a matching *.in template file
+#                        in CMAKE_CURRENT_LIST_DIR; if not found it falls back to
+#                        auto-generating the default C-preprocessor-only template.
+# ---------------------------------------------------------------------------
+set(VERSION_OUT_DIR    "${CMAKE_BINARY_DIR}" CACHE PATH   "Destination directory for the generated version header")
+set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH   "Repository root for git version queries")
+set(VERSION_PREFIX     ""                    CACHE STRING "Prefix for C preprocessor macros in the generated header")
+set(VERSION_NAMESPACE  ""                    CACHE STRING "C++ namespace for constexpr constants (Version.hpp.in only)")
 
 # Get cmakeVersion information
 message(CHECK_START "Find git")
@@ -71,6 +105,17 @@ macro(version_export_variables)
     set( VERSION_DIRTY    ${_VERSION_DIRTY} CACHE INTERNAL "" FORCE)
     set( VERSION_SEMANTIC ${_VERSION_SEMANTIC} CACHE INTERNAL "" FORCE)
     set( VERSION_FULL     ${_VERSION_FULL} CACHE INTERNAL "" FORCE)
+
+    # Compute C++ namespace open/close blocks for Version.hpp.in.
+    # _VERSION_NAMESPACE_BEGIN / _VERSION_NAMESPACE_END are injected into
+    # configure_file so the template does not need conditional logic.
+    if("${VERSION_NAMESPACE}" STREQUAL "")
+        set(_VERSION_NAMESPACE_BEGIN "")
+        set(_VERSION_NAMESPACE_END   "")
+    else()
+        set(_VERSION_NAMESPACE_BEGIN "namespace ${VERSION_NAMESPACE} {")
+        set(_VERSION_NAMESPACE_END   "} // namespace ${VERSION_NAMESPACE}")
+    endif()
 endmacro()
 
 message(CHECK_START "Git Cache-Path")
@@ -157,7 +202,12 @@ version_export_variables()
 if ( VERSION_GENERATE_NOW )
     gitversion_configure_file( ${VERSION_H_TEMPLATE} ${VERSION_H})
 else() 
-    set(VERSION_H_FILENAME "${VERSION_PREFIX}Version.h")
+    # VERSION_H_FILENAME may be pre-set by the caller to override the default
+    # (e.g. "version.hpp" for C++20/23 output). Only set the default when not
+    # already defined so a parent project's setting is not clobbered.
+    if(NOT DEFINED VERSION_H_FILENAME)
+        set(VERSION_H_FILENAME "${VERSION_PREFIX}Version.h")
+    endif()
     set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
     set(VERSION_H "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
@@ -192,14 +242,15 @@ else()
         DEPENDS "${GIT_CACHE_PATH}/index"
             "${GIT_CACHE_PATH}/HEAD"
         COMMENT "Version.cmake: Generating `${VERSION_H_FILENAME}`"
-        COMMAND ${CMAKE_COMMAND}            
+        COMMAND ${CMAKE_COMMAND}
             -B "${VERSION_OUT_DIR}"
             -D VERSION_GENERATE_NOW=YES
             -D VERSION_H_TEMPLATE=${VERSION_H_TEMPLATE}
             -D VERSION_H=${VERSION_H}
             -D VERSION_PREFIX=${VERSION_PREFIX}
+            -D VERSION_NAMESPACE=${VERSION_NAMESPACE}
             -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
-            -D CMAKE_MODULE_PATH=${CMAKE_MODULE_PATH} 
+            -D CMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
             -P ${CMAKE_CURRENT_LIST_FILE}
         WORKING_DIRECTORY ${VERSION_SOURCE_DIR}  
         VERBATIM
