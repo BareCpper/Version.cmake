@@ -157,7 +157,13 @@ else()
         message(CHECK_FAIL
             "Failed: ${GIT_CACHE_PATH_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${GIT_CACHE_PATH}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
     else()
-        file(TO_CMAKE_PATH "${VERSION_SOURCE_DIR}/${GIT_CACHE_PATH}" GIT_CACHE_PATH)
+        # git rev-parse --git-dir returns an absolute path in a git worktree.
+        # Only prepend VERSION_SOURCE_DIR for the relative (.git) case.
+        if(IS_ABSOLUTE "${GIT_CACHE_PATH}")
+            file(TO_CMAKE_PATH "${GIT_CACHE_PATH}" GIT_CACHE_PATH)
+        else()
+            file(TO_CMAKE_PATH "${VERSION_SOURCE_DIR}/${GIT_CACHE_PATH}" GIT_CACHE_PATH)
+        endif()
         message(CHECK_PASS "Success '${GIT_CACHE_PATH}'")
     endif()
 endif()
