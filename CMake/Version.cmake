@@ -56,6 +56,24 @@ set(VERSION_PREFIX "" CACHE STRING
     "Prefix for generated files and C preprocessor definitions")
 set(VERSION_NAMESPACE "" CACHE STRING
     "C++ namespace for constexpr constants in Version.hpp.in (e.g. myapp::version)")
+#
+# VERSION_PARSE_FUNCTION -- name of a CMake macro that replaces the built-in semver parser.
+# Set this before including Version.cmake (as a normal variable, not CACHE) to override.
+# The macro receives the raw git-describe string and must set these variables in its scope:
+#   _VERSION_SET      BOOL    -- TRUE on successful parse; FALSE otherwise
+#   _VERSION_MAJOR    STRING  -- e.g. "6000"
+#   _VERSION_MINOR    STRING  -- e.g. "6"
+#   _VERSION_PATCH    STRING  -- e.g. "0"
+#   _VERSION_COMMIT   STRING  -- commits since tag, e.g. "8099"
+#   _VERSION_SHA      STRING  -- short SHA, e.g. "g5347e4"
+#   _VERSION_DIRTY    STRING  -- "dirty" when repo has uncommitted changes, else ""
+#   _VERSION_SEMANTIC STRING  -- dotted quad: "${MAJOR}.${MINOR}.${PATCH}.${COMMIT}"
+#   _VERSION_FULL     STRING  -- raw version string passed in
+# Use a macro (not a function) so variables are set directly in the calling scope.
+if(NOT DEFINED VERSION_PARSE_FUNCTION)
+    set(VERSION_PARSE_FUNCTION "" CACHE STRING
+        "Optional CMake macro name called instead of the built-in semver parser")
+endif()
 
 # Configure-time build date (not a git-derived date).
 string(TIMESTAMP VERSION_DATE     "%Y-%m-%d")
@@ -110,6 +128,15 @@ macro(version_parseSemantic semVer)
         endif()
     else()
         set(_VERSION_SET FALSE)
+    endif()
+endmacro()
+
+# Dispatch to VERSION_PARSE_FUNCTION if set, otherwise use the built-in semver parser.
+macro(version_parse_dispatch _vpd_ver)
+    if(NOT "${VERSION_PARSE_FUNCTION}" STREQUAL "")
+        cmake_language(CALL "${VERSION_PARSE_FUNCTION}" "${_vpd_ver}")
+    else()
+        version_parseSemantic("${_vpd_ver}")
     endif()
 endmacro()
 
@@ -190,7 +217,7 @@ else()
     message(CHECK_PASS "Success '${git_describe}'")
 
     message(CHECK_START "Parse version")
-    version_parseSemantic(${git_describe})
+    version_parse_dispatch(${git_describe})
 
     if(${_VERSION_SET})
         message(CHECK_PASS "Tag '${git_describe}' is a valid semantic version [${_VERSION_SEMANTIC}]")
@@ -217,7 +244,7 @@ if(NOT DEFINED _VERSION_FULL AND NOT _VERSION_NOT_GIT_REPO)
             "Failed: ${GIT_COUNT_COMMAND}\nResult:'${_GIT_RESULT}' Error:'${_GIT_ERROR}'")
     else()
         set(git_describe "0.0.0-${git_count}-g${git_describe}")
-        version_parseSemantic(${git_describe})
+        version_parse_dispatch(${git_describe})
 
         if(${VERSION_SET})
             message(CHECK_PASS "git-tag '${git_describe}' is a valid semantic version")
