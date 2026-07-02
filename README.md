@@ -4,7 +4,7 @@ Simplify your Semantic-Version automation within every developer build using cod
 ## Prerequisites
 
 1. Use [CMake](https://cmake.org/) to build your project.
-2. Use [Git](https://git-scm.com/) as your code repository 
+2. Use [Git](https://git-scm.com/) as your code repository.
    <br/> :bulb: If you are using a different SCM please [raise an issue](https://github.com/BareCpper/Version.cmake/issues)
 3. Structure your project. See [Here](https://cliutils.gitlab.io/modern-cmake/chapters/basics/structure.html).
 4. Use _modern_ CMake features like targets and properties. See [here](https://pabloariasal.github.io/2018/02/19/its-time-to-do-cmake-right/) and [here](https://rix0r.nl/blog/2015/08/13/cmake-guide/).
@@ -15,50 +15,52 @@ Simplify your Semantic-Version automation within every developer build using cod
    <br/> :gem: Instead of `BUILD_TESTING` use `MYLIBRARY_BUILD_TESTING`
 
 ## Output Variables
-All variables use the form `VERSION_<field>`
 
-Values are defined similar both `CMake` and via the default `Version.h` using C-Preprocessor:or:
-- `VERSION_SET` - Boolean indicating if `VERSION_<fields>` have been populated
-- `VERSION_MAJOR` - Major semantic-version extracted from repository tag
-- `VERSION_MINOR` - Minor semantic-version extracted from repository tag
-- `VERSION_PATCH` - Patch semantic-version extracted from repository tag
-- `VERSION_COMMIT` - Commit-count semantic-version extracted from repository branch revision
-- `VERSION_SHA` - Revision specific unique SHA hash. For example `4c757e7`
-- `VERSION_SEMANTIC` - Full semantic version in form `<major>.<minor>.<patch>.<commit>`. For example `0.1.0.10`
-- `VERSION_FULL` - Full string description, useful for ABI compatiblity. For example `v0.1-9-g4c757e7-dirty`
+All CMake variables use the form `VERSION_<field>`:
+
+| Variable | Description | Example |
+|---|---|---|
+| `VERSION_SET` | `TRUE` if version fields were populated successfully | `TRUE` |
+| `VERSION_MAJOR` | Major semantic-version extracted from repository tag | `0` |
+| `VERSION_MINOR` | Minor semantic-version extracted from repository tag | `1` |
+| `VERSION_PATCH` | Patch semantic-version extracted from repository tag | `2` |
+| `VERSION_COMMIT` | Commit count since last tag | `30` |
+| `VERSION_SHA` | Revision-specific unique SHA hash | `4c757e7` |
+| `VERSION_SEMANTIC` | Full semantic version `major.minor.patch.commit` | `0.1.2.30` |
+| `VERSION_FULL` | Full git describe output, useful for ABI compatibility | `v0.1.2-30-g4c757e7-dirty` |
 
 ## Adding Version.cmake
 
-We recommend using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) so you stay upto-date with the latest fixes and features.
+We recommend using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) so you stay up to date with the latest fixes and features.
 
-Alternative, you may directly include `Version.cmake` in your project but we don't encourage this as to ensure you keep uptodate with latest fixes.
+Alternatively, you may directly include `Version.cmake` in your project but we don't encourage this as you may miss important updates.
 
 ### Basic Usage
 
-After [adding CPM.cmake](https://github.com/cpm-cmake/CPM.cmake#adding-cpm), add the following line to the `CMakeLists.txt`.
+After [adding CPM.cmake](https://github.com/cpm-cmake/CPM.cmake#adding-cpm), add the following to your `CMakeLists.txt`:
 
 ```cmake
-include(CPM)
-CPMAddPackage("gh:BareCpper/Version.cmake")
+CPMAddPackage("gh:BareCpper/Version.cmake@0.4")
 ```
 
-You may wish to optionally set the PROJECT version on the `project(...)`. 
-If so we recommend checking `VERSION_SET == True`:
+You may wish to optionally set the project version on the `project(...)` call.
+If so, we recommend checking `VERSION_SET`:
+
 ```cmake
-if ( NOT VERSION_SET )
-    message( FATAL_ERROR "Version.cmake is required")
+if(NOT VERSION_SET)
+    message(FATAL_ERROR "Version.cmake is required")
 endif()
-project( MyProject VERSION ${VERSION_SEMANTIC} ) 
+project(MyProject VERSION ${VERSION_SEMANTIC})
 ```
 
-To use the Version information within a cmake build target:
-1. Add `version::version` to the `target_link_libraries` for the target library/executable etc
-2. Add `Version.h` via the `#include` directive
-3. Use the `VERSION_<field>` preprocessor values in your code
- <br/> :gem: The default template `.in` defines C-preprocessor directives. For Modern C++ we intent to support constexpr constants in an upcoming release. 
+To use the version information within a CMake build target:
+1. Add `version::version` to the `target_link_libraries` for the target library/executable.
+2. Add `Version.h` via the `#include` directive.
+3. Use the `VERSION_<field>` preprocessor values in your code.
+   <br/> :gem: The default template defines C-preprocessor directives. For C++17 and later, see the [constexpr template](#c17-usage-constexpr-namespace) below.
 
 ```cmake
-target_link_libraries( MyLibrary
+target_link_libraries(MyLibrary
     PRIVATE
         version::version
 )
@@ -67,11 +69,101 @@ target_link_libraries( MyLibrary
 #include "Version.h"
 ```
 
+## Configuration Variables
+
+All variables are optional — sensible defaults are provided for every one.
+Override any of them in your `CMakeLists.txt` before calling `CPMAddPackage` / `include(Version.cmake)`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `VERSION_OUT_DIR` | `CMAKE_BINARY_DIR` | Output directory for the generated header. Override to place the header inside a sub-directory already on the include path (e.g. `${CMAKE_BINARY_DIR}/include/myapp`). |
+| `VERSION_SOURCE_DIR` | `CMAKE_SOURCE_DIR` | The git repository root to query. Override for sub-module or CPM-fetched versioning. |
+| `VERSION_PREFIX` | `""` | Optional prefix for C preprocessor macros. `"MYAPP_"` produces `MYAPP_VERSION_MAJOR`. Useful when multiple libraries use Version.cmake in the same build. |
+| `VERSION_H_FILENAME` | `"${VERSION_PREFIX}Version.h"` | Output filename. Set to `"version.hpp"` to select the C++17 `constexpr` template instead of the default C-preprocessor template. |
+| `VERSION_NAMESPACE` | `""` | Optional C++ namespace for `constexpr` constants in `Version.hpp.in`. Supports nested namespaces (e.g. `"myapp::version"`). Only used when `VERSION_H_FILENAME` ends in `.hpp`. |
+
+### C++17 Usage (constexpr namespace)
+
+Set `VERSION_H_FILENAME` and `VERSION_NAMESPACE` to get `inline constexpr` constants in a named namespace:
+<br/> :gem: This is the recommended approach for C++17 (and later) projects.
+
+```cmake
+set(VERSION_OUT_DIR    "${CMAKE_BINARY_DIR}/include/myapp")
+set(VERSION_PREFIX     "MYAPP_")
+set(VERSION_H_FILENAME "version.hpp")
+set(VERSION_NAMESPACE  "myapp::version")
+
+CPMAddPackage("gh:BareCpper/Version.cmake@0.4")
+target_link_libraries(MyLibrary PUBLIC version::version)
+```
+
+Generated `include/myapp/version.hpp`:
+
+```cpp
+// Generated by Version.cmake -- do not edit.
+#pragma once
+#include <cstdint>
+#include <string_view>
+
+namespace myapp::version {
+    inline constexpr std::uint32_t  version_major   = 0;
+    inline constexpr std::uint32_t  version_minor   = 1;
+    inline constexpr std::uint32_t  version_patch   = 2;
+    inline constexpr std::uint32_t  version_commit  = 30;
+    inline constexpr std::string_view version_sha    = "4c757e7";
+    inline constexpr std::string_view version_string = "0.1.2.30";
+    inline constexpr std::string_view version_full   = "v0.1.2-30-g4c757e7";
+} // namespace myapp::version
+
+// Legacy C preprocessor macros (for C ABI and pre-C++20 code)
+#define MYAPP_VERSION_MAJOR   0
+#define MYAPP_VERSION_STRING  "0.1.2.30"
+// ...
+```
+
+```cpp
+#include "myapp/version.hpp"
+
+// C++ constexpr path
+static_assert(myapp::version::version_major >= 0);
+
+// C legacy path (e.g. in a C ABI header)
+// MYAPP_VERSION_MAJOR == 0
+```
+
+### Custom Templates
+
+Set `VERSION_H_FILENAME` to any filename; Version.cmake looks for a matching `.in` file in the Version.cmake package directory. If no matching `.in` file is found, the default C-preprocessor template is auto-generated.
+
+To provide your own template, place a `<filename>.in` file in your project and point `VERSION_H_TEMPLATE` at it:
+
+```cmake
+set(VERSION_H_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/MyVersion.h.in")
+```
+
+Available substitution variables inside any template:
+
+| Template variable | Value |
+|---|---|
+| `@_VERSION_MAJOR@` | Major component (integer) |
+| `@_VERSION_MINOR@` | Minor component (integer) |
+| `@_VERSION_PATCH@` | Patch component (integer) |
+| `@_VERSION_COMMIT@` | Commit count (integer) |
+| `@_VERSION_SHA@` | Short SHA string |
+| `@_VERSION_SEMANTIC@` | Full semantic string |
+| `@_VERSION_FULL@` | Full git describe string |
+| `@_VERSION_PREFIX@` | Resolved prefix (with trailing `_` if non-empty) |
+| `@_VERSION_NAMESPACE_BEGIN@` | `namespace X {` or empty |
+| `@_VERSION_NAMESPACE_END@` | `} // namespace X` or empty |
+
 # Advantages
-- **Small and reusable** so can be added to any CMake build
-- **No re-configuring of CMake project necessary** as the build-time step will udpate version information for your build transparently.
-- ...lots more to think about & list
+- **Small and reusable** so can be added to any CMake build.
+- **No re-configuring of CMake necessary** — the build-time step updates version information transparently.
+- **C and C++ compatible** — default template uses C preprocessor; C++17 `constexpr` template available via `VERSION_H_FILENAME`.
+- **Namespace scoping** — `VERSION_NAMESPACE` prevents symbol collisions when multiple libraries use Version.cmake.
+- **Prefix scoping** — `VERSION_PREFIX` scopes C preprocessor macros.
 
 # Limitations
-- No support for Native NDK `Service`
-- TODO [raise an issue](https://github.com/BareCpper/Version.cmake/issues)
+- Requires git on `PATH` at build time.
+- The generated header is regenerated on every build (tracks `HEAD` and `.git/index`) — this is intentional, ensuring version information always reflects the actual commit.
+- No support for non-git SCMs — [raise an issue](https://github.com/BareCpper/Version.cmake/issues) if you need support for another SCM.
