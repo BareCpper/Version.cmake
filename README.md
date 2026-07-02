@@ -57,7 +57,7 @@ To use the version information within a CMake build target:
 1. Add `version::version` to the `target_link_libraries` for the target library/executable.
 2. Add `Version.h` via the `#include` directive.
 3. Use the `VERSION_<field>` preprocessor values in your code.
-   <br/> :gem: The default template defines C-preprocessor directives. For Modern C++ see the [C++20/23 constexpr template](#c2023-usage-constexpr-namespace) below.
+   <br/> :gem: The default template defines C-preprocessor directives. For C++17 and later, see the [constexpr template](#c17-usage-constexpr-namespace) below.
 
 ```cmake
 target_link_libraries(MyLibrary
@@ -71,20 +71,21 @@ target_link_libraries(MyLibrary
 
 ## Configuration Variables
 
-Set these **before** calling `CPMAddPackage` / `include(Version.cmake)`:
+All variables are optional — sensible defaults are provided for every one.
+Override any of them in your `CMakeLists.txt` before calling `CPMAddPackage` / `include(Version.cmake)`:
 
 | Variable | Default | Description |
 |---|---|---|
 | `VERSION_OUT_DIR` | `CMAKE_BINARY_DIR` | Output directory for the generated header. Override to place the header inside a sub-directory already on the include path (e.g. `${CMAKE_BINARY_DIR}/include/myapp`). |
 | `VERSION_SOURCE_DIR` | `CMAKE_SOURCE_DIR` | The git repository root to query. Override for sub-module or CPM-fetched versioning. |
-| `VERSION_PREFIX` | `""` | Prefix for C preprocessor macros. `"MYAPP_"` produces `MYAPP_VERSION_MAJOR`. Useful when multiple libraries use Version.cmake in the same build. |
-| `VERSION_H_FILENAME` | `"${VERSION_PREFIX}Version.h"` | Output filename. Set to `"version.hpp"` to select the C++20/23 `constexpr` template instead of the default C-preprocessor template. |
-| `VERSION_NAMESPACE` | `""` | C++ namespace for `constexpr` constants in `Version.hpp.in`. Supports nested namespaces (e.g. `"myapp::version"`). Only used when `VERSION_H_FILENAME` ends in `.hpp`. |
+| `VERSION_PREFIX` | `""` | Optional prefix for C preprocessor macros. `"MYAPP_"` produces `MYAPP_VERSION_MAJOR`. Useful when multiple libraries use Version.cmake in the same build. |
+| `VERSION_H_FILENAME` | `"${VERSION_PREFIX}Version.h"` | Output filename. Set to `"version.hpp"` to select the C++17 `constexpr` template instead of the default C-preprocessor template. |
+| `VERSION_NAMESPACE` | `""` | Optional C++ namespace for `constexpr` constants in `Version.hpp.in`. Supports nested namespaces (e.g. `"myapp::version"`). Only used when `VERSION_H_FILENAME` ends in `.hpp`. |
 
-### C++20/23 Usage (constexpr namespace)
+### C++17 Usage (constexpr namespace)
 
 Set `VERSION_H_FILENAME` and `VERSION_NAMESPACE` to get `inline constexpr` constants in a named namespace:
-<br/> :gem: This is the recommended approach for modern C++ projects.
+<br/> :gem: This is the recommended approach for C++17 (and later) projects.
 
 ```cmake
 set(VERSION_OUT_DIR    "${CMAKE_BINARY_DIR}/include/myapp")
@@ -158,7 +159,7 @@ Available substitution variables inside any template:
 # Advantages
 - **Small and reusable** so can be added to any CMake build.
 - **No re-configuring of CMake necessary** — the build-time step updates version information transparently.
-- **C and C++ compatible** — default template uses C preprocessor; C++20/23 `constexpr` template available via `VERSION_H_FILENAME`.
+- **C and C++ compatible** — default template uses C preprocessor; C++17 `constexpr` template available via `VERSION_H_FILENAME`.
 - **Namespace scoping** — `VERSION_NAMESPACE` prevents symbol collisions when multiple libraries use Version.cmake.
 - **Prefix scoping** — `VERSION_PREFIX` scopes C preprocessor macros.
 
