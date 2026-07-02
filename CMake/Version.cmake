@@ -70,9 +70,27 @@ set(VERSION_NAMESPACE "" CACHE STRING
 #   _VERSION_SEMANTIC STRING  -- dotted quad: "${MAJOR}.${MINOR}.${PATCH}.${COMMIT}"
 #   _VERSION_FULL     STRING  -- raw version string passed in
 # Use a macro (not a function) so variables are set directly in the calling scope.
+#
+# VERSION_PARSE_MODULE -- optional path to a .cmake file defining VERSION_PARSE_FUNCTION's
+# macro. Required for a custom parser to survive into genCmakeVersion's build-time
+# re-invocation (a fresh `cmake -P` process, below): that process starts with none of
+# the including project's variables or macro definitions, only what is explicitly
+# passed via -D or loaded via include()/CMAKE_MODULE_PATH. A macro *name* forwarded
+# as a string is not enough on its own -- the macro's *body* has to be loaded too.
+# If your parser macro is defined directly in the including CMakeLists.txt (works fine
+# for the configure-time parse below, since that runs in-process and already has it),
+# set VERSION_PARSE_MODULE to a file containing the same macro so the build-time
+# re-invocation can include() it and get an identical, consistent parse both times.
 if(NOT DEFINED VERSION_PARSE_FUNCTION)
     set(VERSION_PARSE_FUNCTION "" CACHE STRING
         "Optional CMake macro name called instead of the built-in semver parser")
+endif()
+if(NOT DEFINED VERSION_PARSE_MODULE)
+    set(VERSION_PARSE_MODULE "" CACHE FILEPATH
+        "Optional .cmake file defining VERSION_PARSE_FUNCTION's macro -- included here and forwarded to genCmakeVersion's build-time re-invocation")
+endif()
+if(NOT "${VERSION_PARSE_MODULE}" STREQUAL "")
+    include("${VERSION_PARSE_MODULE}")
 endif()
 
 # Configure-time build date (not a git-derived date).
@@ -322,6 +340,9 @@ else()
             "-DVERSION_NAMESPACE=${VERSION_NAMESPACE}"
             "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
             "-DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}"
+            "-DVERSION_SOURCE_DIR=${VERSION_SOURCE_DIR}"
+            "-DVERSION_PARSE_FUNCTION=${VERSION_PARSE_FUNCTION}"
+            "-DVERSION_PARSE_MODULE=${VERSION_PARSE_MODULE}"
             -B "${VERSION_OUT_DIR}"
             -P "${CMAKE_CURRENT_LIST_FILE}"
         WORKING_DIRECTORY "${VERSION_SOURCE_DIR}"
