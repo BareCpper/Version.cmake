@@ -21,6 +21,7 @@ All CMake variables use the form `VERSION_<field>`:
 | Variable | Description | Example |
 |---|---|---|
 | `VERSION_SET` | `TRUE` if version fields were populated successfully | `TRUE` |
+| `VERSION_IS_FALLBACK` | `TRUE` if the version came from `VERSION_FALLBACK` rather than a tag | `FALSE` |
 | `VERSION_MAJOR` | Major semantic-version extracted from repository tag | `0` |
 | `VERSION_MINOR` | Minor semantic-version extracted from repository tag | `1` |
 | `VERSION_PATCH` | Patch semantic-version extracted from repository tag | `2` |
@@ -78,9 +79,45 @@ Override any of them in your `CMakeLists.txt` before calling `CPMAddPackage` / `
 |---|---|---|
 | `VERSION_OUT_DIR` | `CMAKE_BINARY_DIR` | Output directory for the generated header. Override to place the header inside a sub-directory already on the include path (e.g. `${CMAKE_BINARY_DIR}/include/myapp`). |
 | `VERSION_SOURCE_DIR` | `CMAKE_SOURCE_DIR` | The git repository root to query. Override for sub-module or CPM-fetched versioning. |
-| `VERSION_PREFIX` | `""` | Optional prefix for C preprocessor macros. `"MYAPP_"` produces `MYAPP_VERSION_MAJOR`. Useful when multiple libraries use Version.cmake in the same build. |
+| `VERSION_PREFIX` | `""` | Optional prefix for C preprocessor macros. `"MYAPP_"` produces `MYAPP_VERSION_MAJOR`; a `_` separator is appended if you do not write one. Useful when multiple libraries use Version.cmake in the same build. |
 | `VERSION_H_FILENAME` | `"${VERSION_PREFIX}Version.h"` | Output filename. Set to `"version.hpp"` to select the C++17 `constexpr` template instead of the default C-preprocessor template. |
 | `VERSION_NAMESPACE` | `""` | Optional C++ namespace for `constexpr` constants in `Version.hpp.in`. Supports nested namespaces (e.g. `"myapp::version"`). Only used when `VERSION_H_FILENAME` ends in `.hpp`. |
+| `VERSION_TAG_PATTERN` | `"v[0-9]*"` | glob(7) pattern(s) of tags `git describe` may select. Accepts a CMake list, expanded to one `--match` flag per element. Set to `""` to consider every tag. |
+| `VERSION_TAG_EXCLUDE_PATTERN` | `"v[0-9]*[._][0-9]*[._][0-9]*-[0-9]*"` | glob(7) pattern(s) of tags `git describe` must reject, applied after `VERSION_TAG_PATTERN`. Accepts a CMake list. Set to `""` to reject nothing. |
+| `VERSION_FALLBACK` | `PROJECT_VERSION`, else `0.0.0` | `major.minor.patch` used when no tag supplies a version. |
+
+### Which Tag Becomes the Version
+
+Only version-shaped tags are candidates. `VERSION_TAG_PATTERN` defaults to `v[0-9]*`, so tags like `perfgate-pre-recovery` -- the safety tag many projects write before a risky git operation -- are ignored no matter how recent they are. Without that filter such a tag becomes the version, fails to parse, and the generated header carries no version at all.
+
+`VERSION_TAG_EXCLUDE_PATTERN` is applied on top, and rejects 'tweak' tags of the form `v0.1.2-30` whose trailing `-30` collides with `git describe`'s own `-<commits>-g<sha>` suffix.
+
+If your project tags differently, set the pattern to your convention. Both variables accept a list:
+
+```cmake
+# Un-prefixed release tags such as 2024.1.5, alongside the default v1.2.3 form
+set(VERSION_TAG_PATTERN "v[0-9]*;[0-9]*")
+```
+
+:warning: The default exclude pattern only rejects `v`-prefixed tweak tags. If you override `VERSION_TAG_PATTERN` to accept un-prefixed tags, override `VERSION_TAG_EXCLUDE_PATTERN` to match, or a tag like `1.2.3-30` will be selected and fail to parse.
+
+### When No Tag Matches
+
+A fresh clone, or a project that has not tagged its first release, has no matching tag. `git describe --always` then returns a bare commit id, which is not a version.
+
+Version.cmake never emits a header with empty fields in that case -- a header that compiles and ships while reporting no version at all is worse than a failed build. It falls back to `VERSION_FALLBACK`, which defaults to the version already declared on your `project()` call, keeps the commit count and SHA from git, and sets `VERSION_IS_FALLBACK`:
+
+```cmake
+project(MyProject VERSION 1.4.0)
+CPMAddPackage("gh:BareCpper/Version.cmake@0.4")
+
+# Release builds must carry a real tag; developer builds need not.
+if(MYPROJECT_RELEASE AND VERSION_IS_FALLBACK)
+    message(FATAL_ERROR "Release build has no ${VERSION_TAG_PATTERN} tag; got ${VERSION_FULL}")
+endif()
+```
+
+This is reported at `STATUS` level, not as a warning: an untagged repository is an ordinary state its developer already knows about, and a warning on every configure of every fresh clone teaches people to ignore warnings. The one case that *does* warn is a tag that matched `VERSION_TAG_PATTERN` but failed to parse -- that means the pattern and the parser disagree, which is a real configuration bug and the one that silently produced version-less builds.
 
 ### C++17 Usage (constexpr namespace)
 
@@ -164,6 +201,7 @@ Available substitution variables inside any template:
 - **Prefix scoping** — `VERSION_PREFIX` scopes C preprocessor macros.
 
 # Limitations
-- Requires git on `PATH` at build time.
+- Git on `PATH` at build time is needed for the commit count, SHA and dirty flag. Without it the build still succeeds, reporting `VERSION_FALLBACK` with `VERSION_IS_FALLBACK` set.
 - The generated header is regenerated on every build (tracks `HEAD` and `.git/index`) — this is intentional, ensuring version information always reflects the actual commit.
+- Only the built-in semantic-version shape is parsed by default. A tag matching `VERSION_TAG_PATTERN` in a form the parser does not accept warns and falls back; supply `VERSION_PARSE_FUNCTION` for a different scheme.
 - No support for non-git SCMs — [raise an issue](https://github.com/BareCpper/Version.cmake/issues) if you need support for another SCM.
