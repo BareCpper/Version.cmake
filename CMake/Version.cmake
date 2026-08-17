@@ -39,6 +39,20 @@ list(APPEND CMAKE_MESSAGE_INDENT "  ")
 #                        Default: "${VERSION_PREFIX}Version.h"
 #                        Set to "version.hpp" (or "${VERSION_PREFIX}Version.hpp")
 #                        to select CMake/Version.hpp.in (C++20/23 constexpr output).
+#
+# VERSION_TAG_PATTERN -- glob(7) pattern(s) of tags `git describe` may select.
+#                        Default: "v[0-9]*".
+#                        A CMake list becomes one --match flag per element.
+#                        Set to "" to consider every tag (no --match).
+#
+# VERSION_TAG_EXCLUDE_PATTERN
+#                     -- glob(7) pattern(s) of tags `git describe` must reject.
+#                        Default: "v[0-9]*[._][0-9]*[._][0-9]*-[0-9]*".
+#                        A CMake list becomes one --exclude flag per element.
+#                        Set to "" to reject nothing (no --exclude).
+#
+# VERSION_FALLBACK    -- "major.minor.patch" used when no tag supplies a version.
+#                        Default: PROJECT_VERSION, else "0.0.0".
 # ---------------------------------------------------------------------------
 
 # VERSION_OUT_DIR: only set the default when not already defined by the caller,
@@ -50,12 +64,64 @@ if(NOT DEFINED VERSION_OUT_DIR OR "${VERSION_OUT_DIR}" STREQUAL "")
         "Destination directory into which Version.cmake shall generate versioning header files")
 endif()
 
-set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH
-    "Repository directory used for Version.cmake repo versioning")
-set(VERSION_PREFIX "" CACHE STRING
-    "Prefix for generated files and C preprocessor definitions")
-set(VERSION_NAMESPACE "" CACHE STRING
-    "C++ namespace for constexpr constants in Version.hpp.in (e.g. myapp::version)")
+# Guarded for the same reason as VERSION_OUT_DIR above, and for one more:
+# creating a cache entry drops a normal variable of the same name under
+# CMP0126 OLD, which every caller with cmake_minimum_required below 3.21 gets.
+# Callers set these as normal variables before include(), so unguarded cache
+# defaults discarded them on the *first* configure and honoured them on every
+# reconfigure -- a prefix that appeared only after the second cmake run.
+if(NOT DEFINED VERSION_SOURCE_DIR)
+    set(VERSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH
+        "Repository directory used for Version.cmake repo versioning")
+endif()
+if(NOT DEFINED VERSION_PREFIX)
+    set(VERSION_PREFIX "" CACHE STRING
+        "Prefix for generated files and C preprocessor definitions")
+endif()
+if(NOT DEFINED VERSION_NAMESPACE)
+    set(VERSION_NAMESPACE "" CACHE STRING
+        "C++ namespace for constexpr constants in Version.hpp.in (e.g. myapp::version)")
+endif()
+
+# Tag filters. Guarded with NOT DEFINED so a caller may pre-set either as a
+# normal variable -- including to the empty string, which disables that filter.
+if(NOT DEFINED VERSION_TAG_PATTERN)
+    set(VERSION_TAG_PATTERN "v[0-9]*" CACHE STRING
+        "glob(7) pattern(s) of tags git-describe may select; empty considers every tag")
+endif()
+if(NOT DEFINED VERSION_TAG_EXCLUDE_PATTERN)
+    set(VERSION_TAG_EXCLUDE_PATTERN "v[0-9]*[._][0-9]*[._][0-9]*-[0-9]*" CACHE STRING
+        "glob(7) pattern(s) of tags git-describe must reject; empty rejects nothing")
+endif()
+
+# Default the fallback to the version project() already declared, so a build
+# with no usable tag reports the number the maintainer wrote down rather than
+# nothing at all. PROJECT_VERSION is empty when Version.cmake is included
+# before project(), or when project() carried no VERSION argument.
+if(NOT DEFINED VERSION_FALLBACK)
+    if("${PROJECT_VERSION}" STREQUAL "")
+        set(VERSION_FALLBACK "0.0.0" CACHE STRING
+            "major.minor.patch used when no git tag supplies a version")
+    else()
+        set(VERSION_FALLBACK "${PROJECT_VERSION}" CACHE STRING
+            "major.minor.patch used when no git tag supplies a version")
+    endif()
+endif()
+
+# Resolved macro prefix. Computed here rather than inside the parser so the
+# generated header keeps its prefix even when parsing fails and the fallback
+# below supplies the version instead.
+#
+# The separator is appended only when the caller has not already written one.
+# VERSION_H_FILENAME defaults to "${VERSION_PREFIX}Version.h", so callers write
+# the trailing underscore to get "MYAPP_Version.h" -- and unconditionally adding
+# a second one turned the documented "MYAPP_" -> MYAPP_VERSION_MAJOR into
+# MYAPP__VERSION_MAJOR. Callers who pass a bare "MYAPP" still get the separator.
+if("${VERSION_PREFIX}" STREQUAL "" OR "${VERSION_PREFIX}" MATCHES "_$")
+    set(_VERSION_PREFIX "${VERSION_PREFIX}")
+else()
+    set(_VERSION_PREFIX "${VERSION_PREFIX}_")
+endif()
 #
 # VERSION_PARSE_FUNCTION -- name of a CMake macro that replaces the built-in semver parser.
 # Set this before including Version.cmake (as a normal variable, not CACHE) to override.
@@ -65,7 +131,7 @@ set(VERSION_NAMESPACE "" CACHE STRING
 #   _VERSION_MINOR    STRING  -- e.g. "6"
 #   _VERSION_PATCH    STRING  -- e.g. "0"
 #   _VERSION_COMMIT   STRING  -- commits since tag, e.g. "8099"
-#   _VERSION_SHA      STRING  -- short SHA, e.g. "g5347e4"
+#   _VERSION_SHA      STRING  -- short SHA without describe's 'g' marker, e.g. "5347e4"
 #   _VERSION_DIRTY    STRING  -- "dirty" when repo has uncommitted changes, else ""
 #   _VERSION_SEMANTIC STRING  -- dotted quad: "${MAJOR}.${MINOR}.${PATCH}.${COMMIT}"
 #   _VERSION_FULL     STRING  -- raw version string passed in
@@ -112,16 +178,41 @@ else()
     message(CHECK_PASS "Using pre-defined GIT_EXECUTABLE: '${GIT_EXECUTABLE}'")
 endif()
 
+# Git describe tag filters.
+#
+# --match confines `describe` to version-shaped tags. Without it every tag is a
+# candidate, so a project that tags before a risky git operation (the common
+# "<topic>-pre-<change>" safety tag) has that tag picked as its version: the
+# parse then fails and the generated header carries no version at all.
+#
+# --exclude drops 'tweak' tags of the form v0.1.2-30, whose trailing "-30"
+# collides with describe's own "-<commits>-g<sha>" suffix.
+#
+# git applies --exclude after --match, so an excluded tag stays excluded even
+# when the match pattern accepts it. Both flags repeat, so a list-valued
+# pattern expands to one flag per element.
+set(_VERSION_TAG_FILTER_ARGS "")
+foreach(_VERSION_TAG_GLOB IN LISTS VERSION_TAG_PATTERN)
+    list(APPEND _VERSION_TAG_FILTER_ARGS --match "${_VERSION_TAG_GLOB}")
+endforeach()
+foreach(_VERSION_TAG_GLOB IN LISTS VERSION_TAG_EXCLUDE_PATTERN)
+    list(APPEND _VERSION_TAG_FILTER_ARGS --exclude "${_VERSION_TAG_GLOB}")
+endforeach()
+unset(_VERSION_TAG_GLOB)
+
 # Git describe
-# @note Exclude 'tweak' tags in the form v0.1.2-30 to avoid a second suffix
 set(GIT_VERSION_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}"
     --no-pager describe --tags
-    --exclude "v[0-9]*[._][0-9]*[._][0-9]*-[0-9]*"
+    ${_VERSION_TAG_FILTER_ARGS}
     --always --dirty --long)
 
 # Git count (commits on current branch only, not merge-branch commits)
 set(GIT_COUNT_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}"
     rev-list --count --first-parent HEAD)
+
+# Git short SHA, for the fallback path where describe yielded nothing parseable
+set(GIT_SHA_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}"
+    rev-parse --short HEAD)
 
 # Git cache path (for dependency tracking in the custom target)
 set(GIT_CACHE_PATH_COMMAND "${GIT_EXECUTABLE}" -C "${VERSION_SOURCE_DIR}"
@@ -138,15 +229,65 @@ macro(version_parseSemantic semVer)
         set(_VERSION_DIRTY "${CMAKE_MATCH_6}")
         set(_VERSION_SEMANTIC "${_VERSION_MAJOR}.${_VERSION_MINOR}.${_VERSION_PATCH}.${_VERSION_COMMIT}")
         set(_VERSION_FULL "${semVer}")
-
-        if("${VERSION_PREFIX}" STREQUAL "")
-            set(_VERSION_PREFIX "")
-        else()
-            set(_VERSION_PREFIX "${VERSION_PREFIX}_")
-        endif()
     else()
         set(_VERSION_SET FALSE)
     endif()
+endmacro()
+
+# Split "M", "M.N", "M.N.P" or "M.N.P.T" into three numeric components,
+# defaulting absent ones to 0. A value that is not version-shaped at all
+# degrades to 0.0.0 rather than emitting a field the compiler will reject.
+macro(version_splitTriple _vst_value)
+    set(_VERSION_TRIPLE_MAJOR 0)
+    set(_VERSION_TRIPLE_MINOR 0)
+    set(_VERSION_TRIPLE_PATCH 0)
+
+    if("${_vst_value}" MATCHES "^v?([0-9]+)([._]([0-9]+))?([._]([0-9]+))?")
+        set(_VERSION_TRIPLE_MAJOR "${CMAKE_MATCH_1}")
+
+        if(NOT "${CMAKE_MATCH_3}" STREQUAL "")
+            set(_VERSION_TRIPLE_MINOR "${CMAKE_MATCH_3}")
+        endif()
+
+        if(NOT "${CMAKE_MATCH_5}" STREQUAL "")
+            set(_VERSION_TRIPLE_PATCH "${CMAKE_MATCH_5}")
+        endif()
+    endif()
+endmacro()
+
+# Populate the version fields from VERSION_FALLBACK when git supplied nothing
+# parseable. The fields are assigned directly rather than composed into a
+# synthetic tag and pushed back through version_parse_dispatch: a project that
+# installed VERSION_PARSE_FUNCTION did so because its tags are *not* semver, so
+# re-entering its parser could fail a second time and leave the header empty --
+# the exact outcome this path exists to prevent.
+macro(version_applyFallback _vaf_sha _vaf_commit _vaf_dirty)
+    version_splitTriple("${VERSION_FALLBACK}")
+
+    set(_VERSION_SET    TRUE)
+    set(_VERSION_MAJOR  "${_VERSION_TRIPLE_MAJOR}")
+    set(_VERSION_MINOR  "${_VERSION_TRIPLE_MINOR}")
+    set(_VERSION_PATCH  "${_VERSION_TRIPLE_PATCH}")
+    set(_VERSION_COMMIT "${_vaf_commit}")
+    set(_VERSION_SHA    "${_vaf_sha}")
+    set(_VERSION_DIRTY  "${_vaf_dirty}")
+    set(_VERSION_SEMANTIC "${_VERSION_MAJOR}.${_VERSION_MINOR}.${_VERSION_PATCH}.${_VERSION_COMMIT}")
+
+    # Mirror describe's own shape so consumers can parse VERSION_FULL uniformly
+    # whether it came from a tag or from here. The "-g<sha>" segment is dropped
+    # when there is no repository to read a commit from, rather than emitting a
+    # dangling "-g" that looks like a truncated hash.
+    set(_VERSION_FULL "${_VERSION_MAJOR}.${_VERSION_MINOR}.${_VERSION_PATCH}-${_VERSION_COMMIT}")
+
+    if(NOT "${_vaf_sha}" STREQUAL "")
+        string(APPEND _VERSION_FULL "-g${_vaf_sha}")
+    endif()
+
+    if(NOT "${_vaf_dirty}" STREQUAL "")
+        string(APPEND _VERSION_FULL "-${_vaf_dirty}")
+    endif()
+
+    set(_VERSION_IS_FALLBACK TRUE)
 endmacro()
 
 # Dispatch to VERSION_PARSE_FUNCTION if set, otherwise use the built-in semver parser.
@@ -160,6 +301,7 @@ endmacro()
 
 macro(version_export_variables)
     set(VERSION_SET      "${_VERSION_SET}"      CACHE INTERNAL "" FORCE)
+    set(VERSION_IS_FALLBACK "${_VERSION_IS_FALLBACK}" CACHE INTERNAL "" FORCE)
     set(VERSION_MAJOR    "${_VERSION_MAJOR}"    CACHE INTERNAL "" FORCE)
     set(VERSION_MINOR    "${_VERSION_MINOR}"    CACHE INTERNAL "" FORCE)
     set(VERSION_PATCH    "${_VERSION_PATCH}"    CACHE INTERNAL "" FORCE)
@@ -213,6 +355,13 @@ else()
     endif()
 endif()
 
+set(_VERSION_SET FALSE)
+set(_VERSION_IS_FALLBACK FALSE)
+
+# Distinguishes "no tag matched, which is normal" from "a tag matched but did
+# not parse, which is a misconfiguration". Drives the message severity below.
+set(_VERSION_TAG_UNPARSEABLE FALSE)
+
 message(CHECK_START "Git Describe")
 execute_process(
     COMMAND ${GIT_VERSION_COMMAND}
@@ -225,11 +374,18 @@ execute_process(
 )
 
 if(NOT _GIT_RESULT EQUAL 0)
+    # Reported as RESULT_VARIABLE/ERROR_VARIABLE rather than "Result/Error": the
+    # build-time re-invocation runs inside MSBuild, whose canonical-diagnostic
+    # scraper reads a line containing "Error:'...'" as a compiler error and
+    # fails the custom build step -- turning a recoverable fallback into a
+    # broken build for anyone compiling outside a git checkout.
     message(CHECK_FAIL
-        "Failed: ${GIT_VERSION_COMMAND}\nResult:'${_GIT_RESULT}' Error:'${_GIT_ERROR}'")
+        "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
+    set(git_describe "")
+    set(_VERSION_FALLBACK_REASON "git describe failed in '${VERSION_SOURCE_DIR}'")
 
     if("${_GIT_ERROR}" STREQUAL "fatal: bad revision 'HEAD'")
-        set(_VERSION_NOT_GIT_REPO TRUE)
+        set(_VERSION_FALLBACK_REASON "'${VERSION_SOURCE_DIR}' is not a readable git repository")
     endif()
 else()
     message(CHECK_PASS "Success '${git_describe}'")
@@ -237,16 +393,29 @@ else()
     message(CHECK_START "Parse version")
     version_parse_dispatch(${git_describe})
 
-    if(${_VERSION_SET})
+    if(_VERSION_SET)
         message(CHECK_PASS "Tag '${git_describe}' is a valid semantic version [${_VERSION_SEMANTIC}]")
         message(STATUS "Build date: ${VERSION_DATE}")
+    elseif("${git_describe}" MATCHES "^[0-9A-Fa-f]+(-dirty)?$")
+        # --long always emits "<tag>-<n>-g<sha>", so a bare commit id means
+        # --always fired: no tag survived the --match/--exclude filters.
+        message(CHECK_FAIL "No tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
+        set(_VERSION_FALLBACK_REASON
+            "no tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
     else()
         message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
+        set(_VERSION_TAG_UNPARSEABLE TRUE)
+        set(_VERSION_FALLBACK_REASON
+            "describe selected '${git_describe}', which matches VERSION_TAG_PATTERN '${VERSION_TAG_PATTERN}' but does not parse as a version")
     endif()
 endif()
 
-if(NOT DEFINED _VERSION_FULL AND NOT _VERSION_NOT_GIT_REPO)
-    message(CHECK_START "Fallback as Git-Count")
+# A header with empty version fields is worse than a build failure: it compiles,
+# ships, and misreports the artifact. Anything git could not answer is filled in
+# from VERSION_FALLBACK so every field is always populated.
+if(NOT _VERSION_SET)
+    message(CHECK_START "Fallback version")
+
     execute_process(
         COMMAND ${GIT_COUNT_COMMAND}
         RESULT_VARIABLE _GIT_RESULT
@@ -258,17 +427,47 @@ if(NOT DEFINED _VERSION_FULL AND NOT _VERSION_NOT_GIT_REPO)
     )
 
     if(NOT _GIT_RESULT EQUAL 0)
-        message(CHECK_FAIL
-            "Failed: ${GIT_COUNT_COMMAND}\nResult:'${_GIT_RESULT}' Error:'${_GIT_ERROR}'")
-    else()
-        set(git_describe "0.0.0-${git_count}-g${git_describe}")
-        version_parse_dispatch(${git_describe})
+        set(git_count 0)
+    endif()
 
-        if(${VERSION_SET})
-            message(CHECK_PASS "git-tag '${git_describe}' is a valid semantic version")
-        else()
-            message(CHECK_FAIL "'${git_describe}' is not a valid semantic-version e.g. 'v0.1.2-30'")
-        endif()
+    execute_process(
+        COMMAND ${GIT_SHA_COMMAND}
+        RESULT_VARIABLE _GIT_RESULT
+        OUTPUT_VARIABLE git_sha
+        ERROR_VARIABLE  _GIT_ERROR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+        ${capture_output}
+    )
+
+    if(NOT _GIT_RESULT EQUAL 0)
+        set(git_sha "")
+    endif()
+
+    if("${git_describe}" MATCHES "-dirty$")
+        set(git_dirty "dirty")
+    else()
+        set(git_dirty "")
+    endif()
+
+    version_applyFallback("${git_sha}" "${git_count}" "${git_dirty}")
+    set(git_describe "${_VERSION_FULL}")
+    message(CHECK_PASS "${_VERSION_FULL} [${_VERSION_SEMANTIC}]")
+
+    # Severity: an unparseable tag means VERSION_TAG_PATTERN and the parser
+    # disagree -- a real configuration bug the maintainer can fix, and the one
+    # that silently produced version-less builds. Everything else (no release
+    # tagged yet, no git repository) is an ordinary state the developer already
+    # knows about and cannot act on, so warning there would be unactionable
+    # noise on every configure of every fresh clone.
+    if(_VERSION_TAG_UNPARSEABLE)
+        message(WARNING
+            "Version.cmake: ${_VERSION_FALLBACK_REASON}. Using VERSION_FALLBACK '${VERSION_FALLBACK}' instead; "
+            "set VERSION_TAG_PATTERN to match only tags your parser accepts.")
+    else()
+        message(STATUS
+            "Version.cmake: ${_VERSION_FALLBACK_REASON}; using VERSION_FALLBACK '${VERSION_FALLBACK}'. "
+            "VERSION_IS_FALLBACK is TRUE -- check it to fail a release build that has no tag.")
     endif()
 endif()
 
@@ -343,6 +542,13 @@ else()
             "-DVERSION_SOURCE_DIR=${VERSION_SOURCE_DIR}"
             "-DVERSION_PARSE_FUNCTION=${VERSION_PARSE_FUNCTION}"
             "-DVERSION_PARSE_MODULE=${VERSION_PARSE_MODULE}"
+            # The tag filters and the fallback must be forwarded too: this is a
+            # fresh `cmake -P` process with no project() and no cache, so an
+            # unforwarded VERSION_FALLBACK would silently re-default to 0.0.0
+            # and the built header would disagree with the configure-time one.
+            "-DVERSION_TAG_PATTERN=${VERSION_TAG_PATTERN}"
+            "-DVERSION_TAG_EXCLUDE_PATTERN=${VERSION_TAG_EXCLUDE_PATTERN}"
+            "-DVERSION_FALLBACK=${VERSION_FALLBACK}"
             -B "${VERSION_OUT_DIR}"
             -P "${CMAKE_CURRENT_LIST_FILE}"
         WORKING_DIRECTORY "${VERSION_SOURCE_DIR}"
@@ -371,16 +577,20 @@ else()
     get_source_file_property(VERSION_H_GENERATED "${VERSION_H}" GENERATED)
 endif()
 
-if(NOT _VERSION_NOT_GIT_REPO)
-    if(NOT VERSION_SET)
-        message(CHECK_FAIL "Version.cmake failed - VERSION_SET==false")
-    elseif(${VERSION_H_GENERATED})
-        message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}] {Generated}")
-    elseif(EXISTS "${VERSION_H}")
-        message(CHECK_PASS "Using pre-defined '${VERSION_H}'")
-    else()
-        message(CHECK_FAIL "Failed, ${VERSION_H} not available")
-    endif()
+# VERSION_IS_FALLBACK is reported here so a reader of the configure log can see
+# at a glance that the version came from VERSION_FALLBACK and not from a tag.
+if(VERSION_IS_FALLBACK)
+    set(_VERSION_ORIGIN ", fallback")
 else()
-    message(CHECK_FAIL "Failed, Error reading Git repository")
+    set(_VERSION_ORIGIN "")
+endif()
+
+if(NOT VERSION_SET)
+    message(CHECK_FAIL "Version.cmake failed - VERSION_SET==false")
+elseif(VERSION_H_GENERATED)
+    message(CHECK_PASS "${VERSION_FULL} [${VERSION_SEMANTIC}] {Generated${_VERSION_ORIGIN}}")
+elseif(EXISTS "${VERSION_H}")
+    message(CHECK_PASS "Using pre-defined '${VERSION_H}'")
+else()
+    message(CHECK_FAIL "Failed, ${VERSION_H} not available")
 endif()
