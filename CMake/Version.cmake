@@ -9,6 +9,12 @@ cmake_minimum_required(VERSION 3.20)
 # return()
 # endif()
 
+# Captured at file scope. CMAKE_CURRENT_LIST_DIR read from inside a macro
+# resolves against the list file that called the macro, so the package's own
+# location has to be recorded here to survive into version_resolveTemplate.
+set(_VERSION_PACKAGE_DIR  "${CMAKE_CURRENT_LIST_DIR}")
+set(_VERSION_MODULE_FILE  "${CMAKE_CURRENT_LIST_FILE}")
+
 message(CHECK_START "Version.cmake")
 list(APPEND CMAKE_MESSAGE_INDENT "  ")
 
@@ -341,8 +347,10 @@ else()
     )
 
     if(NOT _GIT_RESULT EQUAL 0)
-        message(CHECK_FAIL
-            "Failed: ${GIT_CACHE_PATH_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nOUTPUT_VARIABLE:'${GIT_CACHE_PATH}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
+        # No repository to watch. The version comes from VERSION_FALLBACK below
+        # and the build proceeds, so this is not a failure to report as one.
+        set(GIT_CACHE_PATH "")
+        message(CHECK_PASS "None -- '${VERSION_SOURCE_DIR}' has no readable git history")
     else()
         # git rev-parse --git-dir returns an absolute path in a git worktree.
         # Only prepend VERSION_SOURCE_DIR for the relative (.git) case.
@@ -374,18 +382,31 @@ execute_process(
 )
 
 if(NOT _GIT_RESULT EQUAL 0)
-    # Reported as RESULT_VARIABLE/ERROR_VARIABLE rather than "Result/Error": the
+    set(git_describe "")
+    set(_VERSION_FALLBACK_REASON "git describe failed in '${VERSION_SOURCE_DIR}'")
+
+    set(_VERSION_FALLBACK_RECOGNISED FALSE)
+
+    # Both shapes reach here from an ordinary build with no history to read: an
+    # unpacked source archive has no .git at all, and a repository whose first
+    # commit is not yet made has one but no HEAD.
+    if("${_GIT_ERROR}" MATCHES "not a git repository|bad revision 'HEAD'")
+        set(_VERSION_FALLBACK_REASON "'${VERSION_SOURCE_DIR}' has no readable git history")
+        set(_VERSION_FALLBACK_RECOGNISED TRUE)
+    endif()
+
+    # CHECK_FAIL is reserved for a state the maintainer can act on; the
+    # fallback below completes this one.
+    message(CHECK_PASS "${_VERSION_FALLBACK_REASON}")
+
+    # Spelled RESULT_VARIABLE/ERROR_VARIABLE rather than "Result/Error": the
     # build-time re-invocation runs inside MSBuild, whose canonical-diagnostic
     # scraper reads a line containing "Error:'...'" as a compiler error and
     # fails the custom build step -- turning a recoverable fallback into a
     # broken build for anyone compiling outside a git checkout.
-    message(CHECK_FAIL
-        "Failed: ${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
-    set(git_describe "")
-    set(_VERSION_FALLBACK_REASON "git describe failed in '${VERSION_SOURCE_DIR}'")
-
-    if("${_GIT_ERROR}" STREQUAL "fatal: bad revision 'HEAD'")
-        set(_VERSION_FALLBACK_REASON "'${VERSION_SOURCE_DIR}' is not a readable git repository")
+    if(NOT _VERSION_FALLBACK_RECOGNISED)
+        message(STATUS
+            "${GIT_VERSION_COMMAND}\nRESULT_VARIABLE:'${_GIT_RESULT}' \nERROR_VARIABLE:'${_GIT_ERROR}'")
     endif()
 else()
     message(CHECK_PASS "Success '${git_describe}'")
@@ -399,7 +420,7 @@ else()
     elseif("${git_describe}" MATCHES "^[0-9A-Fa-f]+(-dirty)?$")
         # --long always emits "<tag>-<n>-g<sha>", so a bare commit id means
         # --always fired: no tag survived the --match/--exclude filters.
-        message(CHECK_FAIL "No tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
+        message(CHECK_PASS "No tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
         set(_VERSION_FALLBACK_REASON
             "no tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
     else()
@@ -466,10 +487,90 @@ if(NOT _VERSION_SET)
             "set VERSION_TAG_PATTERN to match only tags your parser accepts.")
     else()
         message(STATUS
-            "Version.cmake: ${_VERSION_FALLBACK_REASON}; using VERSION_FALLBACK '${VERSION_FALLBACK}'. "
+            "Version.cmake: using VERSION_FALLBACK '${VERSION_FALLBACK}'; "
             "VERSION_IS_FALLBACK is TRUE -- check it to fail a release build that has no tag.")
     endif()
 endif()
+
+# Resolve the `.in` template that generates _vrt_filename, in this order:
+#
+#   1. A caller-supplied VERSION_H_TEMPLATE, used verbatim. A path that does not
+#      exist is a hard error rather than a silent fall-through to some other
+#      template: a consumer who named a template wants that one or none.
+#   2. The package's own template of that name, matched exactly.
+#   3. The same name matched ignoring case, so one spelling selects the same
+#      template on a case-sensitive filesystem as on Windows and macOS.
+#   4. A copy of the default C-preprocessor template, for a caller filename this
+#      package ships no template for.
+macro(version_resolveTemplate _vrt_filename)
+    if(DEFINED VERSION_H_TEMPLATE AND NOT "${VERSION_H_TEMPLATE}" STREQUAL "")
+        if(NOT EXISTS "${VERSION_H_TEMPLATE}")
+            message(CHECK_FAIL "Missing")
+            message(FATAL_ERROR
+                "Version.cmake: VERSION_H_TEMPLATE is set to '${VERSION_H_TEMPLATE}', which does not exist. "
+                "Point it at a readable `.in` file, or unset it to use a template from this package.")
+        endif()
+
+        set(_VERSION_H_TEMPLATE "${VERSION_H_TEMPLATE}")
+        message(CHECK_PASS "VERSION_H_TEMPLATE '${_VERSION_H_TEMPLATE}'")
+    else()
+        set(_vrt_wanted "${_vrt_filename}.in")
+        string(TOLOWER "${_vrt_wanted}" _vrt_wantedLower)
+        set(_VERSION_H_TEMPLATE "")
+        set(_vrt_nearMatches "")
+
+        # Matched against the directory listing rather than with EXISTS, which
+        # is case-insensitive on Windows and case-sensitive on Linux and so
+        # cannot report which spelling is on disk.
+        file(GLOB _vrt_candidates "${_VERSION_PACKAGE_DIR}/*.in")
+
+        foreach(_vrt_candidate IN LISTS _vrt_candidates)
+            get_filename_component(_vrt_name "${_vrt_candidate}" NAME)
+
+            if("${_vrt_name}" STREQUAL "${_vrt_wanted}")
+                set(_VERSION_H_TEMPLATE "${_vrt_candidate}")
+                break()
+            endif()
+
+            string(TOLOWER "${_vrt_name}" _vrt_nameLower)
+
+            if("${_vrt_nameLower}" STREQUAL "${_vrt_wantedLower}")
+                list(APPEND _vrt_nearMatches "${_vrt_candidate}")
+            endif()
+        endforeach()
+
+        list(LENGTH _vrt_nearMatches _vrt_nearCount)
+
+        if(NOT "${_VERSION_H_TEMPLATE}" STREQUAL "")
+            message(CHECK_PASS "'${_VERSION_H_TEMPLATE}'")
+        elseif(_vrt_nearCount EQUAL 1)
+            list(GET _vrt_nearMatches 0 _VERSION_H_TEMPLATE)
+            message(CHECK_PASS "'${_VERSION_H_TEMPLATE}' (matched '${_vrt_wanted}' ignoring case)")
+        elseif(_vrt_nearCount GREATER 1)
+            message(CHECK_FAIL "Ambiguous")
+            message(FATAL_ERROR
+                "Version.cmake: '${_vrt_wanted}' matches more than one template ignoring case: "
+                "${_vrt_nearMatches}. Set VERSION_H_TEMPLATE to the one you want.")
+        else()
+            # COPYONLY keeps the @VAR@ placeholders intact. Configuring here
+            # would bake in this configure's values and leave the build-time
+            # regeneration nothing to substitute.
+            set(_VERSION_H_TEMPLATE "${VERSION_OUT_DIR}/${_vrt_wanted}")
+            configure_file("${_VERSION_PACKAGE_DIR}/Version.h.in" "${_VERSION_H_TEMPLATE}" COPYONLY)
+            message(CHECK_PASS
+                "This package ships no '${_vrt_wanted}'; using the default C template")
+        endif()
+
+        unset(_vrt_candidate)
+        unset(_vrt_candidates)
+        unset(_vrt_name)
+        unset(_vrt_nameLower)
+        unset(_vrt_nearCount)
+        unset(_vrt_nearMatches)
+        unset(_vrt_wanted)
+        unset(_vrt_wantedLower)
+    endif()
+endmacro()
 
 function(gitversion_configure_file VERSION_H_TEMPLATE VERSION_H)
     # Quote both args: paths with spaces will break configure_file otherwise
@@ -483,57 +584,42 @@ if(VERSION_GENERATE_NOW)
     gitversion_configure_file("${VERSION_H_TEMPLATE}" "${VERSION_H}")
 else()
     # VERSION_H_FILENAME may be pre-set by the caller to override the default
-    # (e.g. "version.hpp" for C++20/23 output). Only set the default when not
-    # already defined so a parent project's setting is not clobbered.
+    # (e.g. "Version.hpp" for the C++ constexpr output). Only set the default
+    # when not already defined so a parent project's setting is not clobbered.
     if(NOT DEFINED VERSION_H_FILENAME)
         set(VERSION_H_FILENAME "${VERSION_PREFIX}Version.h")
     endif()
-    set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
-    set(VERSION_H          "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
-    message(CHECK_START "Find '${VERSION_H_FILENAME}.in'")
+    set(VERSION_H "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
-    if(NOT EXISTS "${VERSION_H_TEMPLATE}")
-        set(VERSION_H_TEMPLATE "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}.in")
-        message(CHECK_FAIL "Not Found. Generating '${VERSION_H_TEMPLATE}'")
+    message(CHECK_START "Find template for '${VERSION_H_FILENAME}'")
+    version_resolveTemplate("${VERSION_H_FILENAME}")
 
-        # Auto-generate a minimal C-preprocessor template when none is provided.
-        # For C++20/23 output, set VERSION_H_FILENAME to a .hpp name and provide
-        # a Version.hpp.in template (CMake/Version.hpp.in is included in this package).
-        file(WRITE "${VERSION_H_TEMPLATE}"
-            [=[
-#define @_VERSION_PREFIX@VERSION_MAJOR @_VERSION_MAJOR@
-#define @_VERSION_PREFIX@VERSION_MINOR @_VERSION_MINOR@
-#define @_VERSION_PREFIX@VERSION_PATCH @_VERSION_PATCH@
-#define @_VERSION_PREFIX@VERSION_COMMIT @_VERSION_COMMIT@
-#define @_VERSION_PREFIX@VERSION_SHA "@_VERSION_SHA@"
-#define @_VERSION_PREFIX@VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
-#define @_VERSION_PREFIX@VERSION_FULL "@_VERSION_FULL@"
-#define @_VERSION_PREFIX@VERSION_DATE "@VERSION_DATE@"
-#define @_VERSION_PREFIX@VERSION_DATETIME "@VERSION_DATETIME@"
-            ]=])
+    # Only the bookkeeping files that exist are declared as inputs: a source
+    # archive has neither, and a repository with no commit yet has HEAD but no
+    # index. Ninja and Make refuse to build a target whose input no rule can
+    # produce.
+    set(_VERSION_GIT_DEPENDS "")
 
-        if(NOT EXISTS "${VERSION_H_TEMPLATE}")
-            message(FATAL_ERROR "Failed to create template ${VERSION_H_TEMPLATE}")
+    foreach(_vgd_file IN ITEMS index HEAD)
+        if(EXISTS "${GIT_CACHE_PATH}/${_vgd_file}")
+            list(APPEND _VERSION_GIT_DEPENDS "${GIT_CACHE_PATH}/${_vgd_file}")
         endif()
-    else()
-        message(CHECK_PASS "Found '${VERSION_H_TEMPLATE}'")
-    endif()
+    endforeach()
 
-    # Custom target regenerates the header on every build by tracking git HEAD/index.
+    unset(_vgd_file)
+
     add_custom_target(genCmakeVersion
         ALL
         BYPRODUCTS "${VERSION_H}"
-        SOURCES    "${VERSION_H_TEMPLATE}"
-        DEPENDS
-            "${GIT_CACHE_PATH}/index"
-            "${GIT_CACHE_PATH}/HEAD"
+        SOURCES    "${_VERSION_H_TEMPLATE}"
+        DEPENDS    ${_VERSION_GIT_DEPENDS}
         COMMENT "Version.cmake: Generating '${VERSION_H_FILENAME}'"
         COMMAND "${CMAKE_COMMAND}"
             # Quote all -D args to handle paths with spaces and list variables
             # with semicolons (Copilot review on PR #7, comment 6).
             "-DVERSION_GENERATE_NOW=YES"
-            "-DVERSION_H_TEMPLATE=${VERSION_H_TEMPLATE}"
+            "-DVERSION_H_TEMPLATE=${_VERSION_H_TEMPLATE}"
             "-DVERSION_H=${VERSION_H}"
             "-DVERSION_PREFIX=${VERSION_PREFIX}"
             "-DVERSION_NAMESPACE=${VERSION_NAMESPACE}"
@@ -550,7 +636,7 @@ else()
             "-DVERSION_TAG_EXCLUDE_PATTERN=${VERSION_TAG_EXCLUDE_PATTERN}"
             "-DVERSION_FALLBACK=${VERSION_FALLBACK}"
             -B "${VERSION_OUT_DIR}"
-            -P "${CMAKE_CURRENT_LIST_FILE}"
+            -P "${_VERSION_MODULE_FILE}"
         WORKING_DIRECTORY "${VERSION_SOURCE_DIR}"
         VERBATIM
     )
