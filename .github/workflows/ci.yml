@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-latest is the only case-sensitive filesystem of the three, and
+        # is what catches a template referenced by a spelling that differs from
+        # the name on disk. Windows and macOS resolve such a reference silently.
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are the module's input, and the default shallow fetch has none.
+          fetch-depth: 0
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      # Builds the module's own generation target, which is the path a consumer
+      # takes; the suite below builds its sub-projects itself.
+      - name: Build
+        run: cmake --build build --config Debug
+
+      # --build-config is required by the multi-config generator that is the
+      # Windows default, and ignored by the single-config generators elsewhere.
+      - name: Test
+        run: ctest --test-dir build --build-config Debug --output-on-failure

@@ -39,14 +39,17 @@ inline constexpr std::string_view version_datetime = "@VERSION_DATETIME@";
 
 @_VERSION_NAMESPACE_END@
 
-// ── C preprocessor macros ────────────────────────────────────────────────────
-// Retained for C ABI headers and pre-C++20 code. The VERSION_PREFIX variable
-// scopes these to avoid collisions when multiple libraries are present.
+// --- C preprocessor macros -------------------------------------------------
+// Retained for C ABI headers and for C++ that predates the constants above.
+// VERSION_PREFIX scopes them against collisions when several libraries in one
+// build each generate a header.
 #define @_VERSION_PREFIX@VERSION_MAJOR   @_VERSION_MAJOR@
 #define @_VERSION_PREFIX@VERSION_MINOR   @_VERSION_MINOR@
 #define @_VERSION_PREFIX@VERSION_PATCH   @_VERSION_PATCH@
 #define @_VERSION_PREFIX@VERSION_COMMIT  @_VERSION_COMMIT@
 #define @_VERSION_PREFIX@VERSION_SHA      "@_VERSION_SHA@"
+#define @_VERSION_PREFIX@VERSION_SEMANTIC "@_VERSION_SEMANTIC@"
+/* Deprecated spelling of VERSION_SEMANTIC, kept for existing call sites. */
 #define @_VERSION_PREFIX@VERSION_STRING   "@_VERSION_SEMANTIC@"
 #define @_VERSION_PREFIX@VERSION_FULL     "@_VERSION_FULL@"
 #define @_VERSION_PREFIX@VERSION_DATE     "@VERSION_DATE@"
