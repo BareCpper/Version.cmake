@@ -1,5 +1,7 @@
 # Version.cmake
 
+[![CI](https://github.com/BareCpper/Version.cmake/actions/workflows/ci.yml/badge.svg)](https://github.com/BareCpper/Version.cmake/actions/workflows/ci.yml)
+
 Simplify your Semantic-Version automation within every developer build using code commits and repository tags.
 
 ## Prerequisites
