@@ -650,7 +650,9 @@ else()
     endif()
 
     target_sources(cmakeVersion INTERFACE "${VERSION_H}")
-    add_dependencies(cmakeVersion INTERFACE genCmakeVersion)
+    # add_dependencies takes no keyword arguments: the stray INTERFACE here was
+    # a second, non-existent dependency name that CMake happened to tolerate.
+    add_dependencies(cmakeVersion genCmakeVersion)
 
     add_library(version::version ALIAS cmakeVersion)
 endif()
