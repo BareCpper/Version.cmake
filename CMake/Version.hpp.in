@@ -2,8 +2,10 @@
 //
 // C++17 version constants. Configure via CMake variables:
 //
-//   VERSION_H_FILENAME  -- set to "version.hpp" (or "${VERSION_PREFIX}Version.hpp")
+//   VERSION_H_FILENAME  -- set to "Version.hpp" (or "${VERSION_PREFIX}Version.hpp")
 //                          to select this template over the default Version.h.in.
+//                          The lookup is case-insensitive as a fallback, but this
+//                          exact spelling matches the shipped filename precisely.
 //   VERSION_NAMESPACE   -- optional C++ namespace, e.g. "myapp::version".
 //                          If empty, constants are emitted at global scope.
 //   VERSION_PREFIX      -- optional prefix for the C preprocessor macros below,

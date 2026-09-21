@@ -37,8 +37,20 @@ list(APPEND CMAKE_MESSAGE_INDENT "  ")
 #
 # VERSION_H_FILENAME  -- Output filename for the generated header.
 #                        Default: "${VERSION_PREFIX}Version.h"
-#                        Set to "version.hpp" (or "${VERSION_PREFIX}Version.hpp")
-#                        to select CMake/Version.hpp.in (C++20/23 constexpr output).
+#                        Set to "Version.hpp" (or "${VERSION_PREFIX}Version.hpp")
+#                        to select the bundled CMake/Version.hpp.in (C++20/23
+#                        constexpr output). The lookup for "${VERSION_H_FILENAME}.in"
+#                        tries an exact match first, then falls back to a
+#                        case-insensitive match in the same directory, so a
+#                        differently-cased reference (e.g. "version.hpp") still
+#                        finds "Version.hpp.in" on a case-sensitive filesystem --
+#                        but prefer the exact case for portability and clarity.
+#
+# VERSION_H_TEMPLATE  -- Optional explicit path to the .in template file, bypassing
+#                        the VERSION_H_FILENAME naming convention entirely. Set this
+#                        (as a normal variable, before include()) when you do not want
+#                        template selection to depend on filename casing at all.
+#                        A configure-time error is raised if the path does not exist.
 #
 # VERSION_TAG_PATTERN -- glob(7) pattern(s) of tags `git describe` may select.
 #                        Default: "v[0-9]*".
@@ -398,8 +410,14 @@ else()
         message(STATUS "Build date: ${VERSION_DATE}")
     elseif("${git_describe}" MATCHES "^[0-9A-Fa-f]+(-dirty)?$")
         # --long always emits "<tag>-<n>-g<sha>", so a bare commit id means
-        # --always fired: no tag survived the --match/--exclude filters.
-        message(CHECK_FAIL "No tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
+        # --always fired: no tag survived the --match/--exclude filters. This is
+        # the ordinary state of a fresh clone or untagged branch and always
+        # resolves via VERSION_FALLBACK below, so it is reported with
+        # CHECK_PASS rather than CHECK_FAIL: a reader scanning for the failure
+        # that broke their build should not stop here, since nothing failed
+        # (issue #10b -- the diagnostic previously read as a failure even
+        # though the header goes on to generate successfully).
+        message(CHECK_PASS "No tag matching '${VERSION_TAG_PATTERN}' reachable from HEAD; using VERSION_FALLBACK")
         set(_VERSION_FALLBACK_REASON
             "no tag matching '${VERSION_TAG_PATTERN}' is reachable from HEAD")
     else()
@@ -488,20 +506,76 @@ else()
     if(NOT DEFINED VERSION_H_FILENAME)
         set(VERSION_H_FILENAME "${VERSION_PREFIX}Version.h")
     endif()
-    set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
-    set(VERSION_H          "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
+    set(VERSION_H "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}")
 
-    message(CHECK_START "Find '${VERSION_H_FILENAME}.in'")
+    # VERSION_H_TEMPLATE: explicit escape hatch (issue #10a). A consumer may
+    # pre-set this (as a normal variable, before include()) to an exact
+    # template path, bypassing the VERSION_H_FILENAME naming convention
+    # entirely. It is already forwarded verbatim into genCmakeVersion's
+    # build-time re-invocation (-DVERSION_H_TEMPLATE=... below), so no further
+    # plumbing is needed for it to survive there.
+    if(DEFINED VERSION_H_TEMPLATE AND NOT "${VERSION_H_TEMPLATE}" STREQUAL "")
+        message(CHECK_START "Find template")
 
-    if(NOT EXISTS "${VERSION_H_TEMPLATE}")
-        set(VERSION_H_TEMPLATE "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}.in")
-        message(CHECK_FAIL "Not Found. Generating '${VERSION_H_TEMPLATE}'")
+        if(NOT EXISTS "${VERSION_H_TEMPLATE}")
+            message(CHECK_FAIL "Not found")
+            message(FATAL_ERROR
+                "Version.cmake: VERSION_H_TEMPLATE '${VERSION_H_TEMPLATE}' does not exist")
+        endif()
 
-        # Auto-generate a minimal C-preprocessor template when none is provided.
-        # For C++20/23 output, set VERSION_H_FILENAME to a .hpp name and provide
-        # a Version.hpp.in template (CMake/Version.hpp.in is included in this package).
-        file(WRITE "${VERSION_H_TEMPLATE}"
-            [=[
+        message(CHECK_PASS "Using explicit VERSION_H_TEMPLATE '${VERSION_H_TEMPLATE}'")
+    else()
+        set(VERSION_H_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/${VERSION_H_FILENAME}.in")
+
+        message(CHECK_START "Find '${VERSION_H_FILENAME}.in'")
+
+        if(EXISTS "${VERSION_H_TEMPLATE}")
+            message(CHECK_PASS "Found '${VERSION_H_TEMPLATE}'")
+        else()
+            # Exact filename missed. The shipped template is named
+            # "Version.hpp.in", but documentation and consumer code have
+            # historically referred to it as "version.hpp" -- on a
+            # case-insensitive filesystem (Windows/macOS default) that discrepancy
+            # is invisible, but on a case-sensitive one (Linux) or with any other
+            # differently-cased reference, the exact-match EXISTS check above
+            # misses silently and this used to fall straight through to
+            # auto-generating the wrong (C-only) template with no error at all
+            # (issue #10a). Before concluding no template exists, do a
+            # case-insensitive scan of the same directory.
+            string(TOLOWER "${VERSION_H_FILENAME}.in" _VERSION_H_TEMPLATE_LOWER)
+            file(GLOB _VERSION_H_TEMPLATE_CANDIDATES LIST_DIRECTORIES FALSE
+                "${CMAKE_CURRENT_LIST_DIR}/*.in")
+            set(_VERSION_H_TEMPLATE_MATCH "")
+
+            foreach(_VERSION_H_TEMPLATE_CANDIDATE IN LISTS _VERSION_H_TEMPLATE_CANDIDATES)
+                get_filename_component(_VERSION_H_TEMPLATE_CANDIDATE_NAME
+                    "${_VERSION_H_TEMPLATE_CANDIDATE}" NAME)
+                string(TOLOWER "${_VERSION_H_TEMPLATE_CANDIDATE_NAME}" _VERSION_H_TEMPLATE_CANDIDATE_LOWER)
+
+                if("${_VERSION_H_TEMPLATE_CANDIDATE_LOWER}" STREQUAL "${_VERSION_H_TEMPLATE_LOWER}")
+                    set(_VERSION_H_TEMPLATE_MATCH "${_VERSION_H_TEMPLATE_CANDIDATE}")
+                    break()
+                endif()
+            endforeach()
+            unset(_VERSION_H_TEMPLATE_CANDIDATE)
+            unset(_VERSION_H_TEMPLATE_CANDIDATE_NAME)
+            unset(_VERSION_H_TEMPLATE_CANDIDATE_LOWER)
+
+            if(NOT "${_VERSION_H_TEMPLATE_MATCH}" STREQUAL "")
+                set(VERSION_H_TEMPLATE "${_VERSION_H_TEMPLATE_MATCH}")
+                message(CHECK_PASS
+                    "Found '${VERSION_H_TEMPLATE}' (case-insensitive match for "
+                    "'${VERSION_H_FILENAME}.in' -- for portability to case-sensitive "
+                    "filesystems, match the case exactly or set VERSION_H_TEMPLATE explicitly)")
+            else()
+                set(VERSION_H_TEMPLATE "${VERSION_OUT_DIR}/${VERSION_H_FILENAME}.in")
+                message(CHECK_FAIL "Not Found. Generating '${VERSION_H_TEMPLATE}'")
+
+                # Auto-generate a minimal C-preprocessor template when none is provided.
+                # For C++20/23 output, set VERSION_H_FILENAME to a .hpp name and provide
+                # a Version.hpp.in template (CMake/Version.hpp.in is included in this package).
+                file(WRITE "${VERSION_H_TEMPLATE}"
+                    [=[
 #define @_VERSION_PREFIX@VERSION_MAJOR @_VERSION_MAJOR@
 #define @_VERSION_PREFIX@VERSION_MINOR @_VERSION_MINOR@
 #define @_VERSION_PREFIX@VERSION_PATCH @_VERSION_PATCH@
@@ -513,11 +587,11 @@ else()
 #define @_VERSION_PREFIX@VERSION_DATETIME "@VERSION_DATETIME@"
             ]=])
 
-        if(NOT EXISTS "${VERSION_H_TEMPLATE}")
-            message(FATAL_ERROR "Failed to create template ${VERSION_H_TEMPLATE}")
+                if(NOT EXISTS "${VERSION_H_TEMPLATE}")
+                    message(FATAL_ERROR "Failed to create template ${VERSION_H_TEMPLATE}")
+                endif()
+            endif()
         endif()
-    else()
-        message(CHECK_PASS "Found '${VERSION_H_TEMPLATE}'")
     endif()
 
     # Custom target regenerates the header on every build by tracking git HEAD/index.
